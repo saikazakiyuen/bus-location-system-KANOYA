@@ -22,7 +22,6 @@
     }
     #time-slider { width: 100%; margin: 10px 0; cursor: pointer; }
     
-    /* ★NEW: 自動進行ボタンのデザイン */
     #play-btn { 
       width: 100%; padding: 8px; background-color: #00AAFF; color: white; 
       border: none; border-radius: 4px; font-weight: bold; cursor: pointer; 
@@ -63,7 +62,6 @@
     <div id="manual-time-container">
       <input type="range" id="time-slider" value="21600" min="21600" max="79200" oninput="onSliderDrag()">
       
-      <!-- ★NEW: 自動進行コントロールパネル -->
       <div style="margin-top: 5px; padding: 10px; background: #fff; border-radius: 4px; border: 1px solid #ccc;">
         <button id="play-btn" onclick="toggleAutoPlay()">▶ 自動進行をスタート</button>
         <div style="font-size: 13px; line-height: 1.6;">
@@ -87,23 +85,24 @@
       <span>⚙️ 路線表示設定</span><span id="toggle-icon">▼</span>
     </div>
     <div id="settings-content">
+      <!-- ★NEW: 系統102のチェックボックスを追加 -->
       <label class="route-toggle"><input type="checkbox" id="chk-route-101" checked onchange="updateSystem()"> 系統101 (垂水〜志布志)</label>
+      <label class="route-toggle"><input type="checkbox" id="chk-route-102" checked onchange="updateSystem()"> 系統102 (鹿屋〜高山・内之浦)</label>
     </div>
   </div>
   
   <div id="map"></div>
 
   <script>
-    const routesToLoad = ["101"]; 
+    // ★NEW: 2つの路線を読み込む
+    const routesToLoad = ["101", "102"]; 
     const systemData = {}; 
     let map;
 
-    // --- 自動進行用の変数 ---
     let isAutoPlaying = false;
     let autoPlayInterval = null;
-    let floatCurrentTime = 21600; // 滑らかに動かすための浮動小数点の時間記憶
+    let floatCurrentTime = 21600;
 
-    // --- 画像読み込みキャッシュ ---
     let isBusALoaded = false;
     let isBusBLoaded = false;
     const busAImage = new Image();
@@ -149,7 +148,6 @@
       return cache[normalizedAngle];
     }
 
-    // ★NEW: 自動進行のスタート/ストップ処理
     function toggleAutoPlay() {
       const btn = document.getElementById("play-btn");
       const slider = document.getElementById("time-slider");
@@ -158,14 +156,8 @@
       if (isAutoPlaying) {
         btn.innerText = "■ 自動進行を停止";
         btn.classList.add("playing");
-        
-        // スライダーが一番最後まで行っていたら最初に戻してあげる
-        if (parseInt(slider.value) >= parseInt(slider.max)) {
-          slider.value = slider.min;
-        }
+        if (parseInt(slider.value) >= parseInt(slider.max)) slider.value = slider.min;
         floatCurrentTime = parseFloat(slider.value);
-        
-        // 1秒間に10回（100msごと）計算して滑らかに動かす
         autoPlayInterval = setInterval(autoPlayStep, 100); 
       } else {
         btn.innerText = "▶ 自動進行をスタート";
@@ -174,47 +166,32 @@
       }
     }
 
-    // ★NEW: 100msごとに時間を進める処理
     function autoPlayStep() {
-      let speedSec = 30; // デフォルトは30秒
+      let speedSec = 30;
       const radios = document.getElementsByName("play-speed");
       for (let r of radios) {
         if (r.checked) {
-          if (r.value === "custom") {
-            speedSec = parseFloat(document.getElementById("custom-speed").value) || 1;
-          } else {
-            speedSec = parseFloat(r.value);
-          }
+          speedSec = r.value === "custom" ? (parseFloat(document.getElementById("custom-speed").value) || 1) : parseFloat(r.value);
           break;
         }
       }
-
-      // 「1時間をspeedSec秒で進める」ための、100msあたりの進行秒数
       const delta = (3600 / speedSec) * 0.1; 
       floatCurrentTime += delta;
-      
       const slider = document.getElementById("time-slider");
       if (floatCurrentTime >= parseInt(slider.max)) {
         floatCurrentTime = parseInt(slider.max);
-        toggleAutoPlay(); // 最後まで到達したら自動で停止
+        toggleAutoPlay();
       }
-      
       slider.value = Math.floor(floatCurrentTime);
       updateSystem();
     }
 
-    // 手動でスライダーをドラッグした時の処理
-    function onSliderDrag() {
-      floatCurrentTime = parseFloat(document.getElementById("time-slider").value);
-      updateSystem();
-    }
+    function onSliderDrag() { floatCurrentTime = parseFloat(document.getElementById("time-slider").value); updateSystem(); }
 
     function toggleManualTime() {
       const isManual = document.getElementById("manual-time-toggle").checked;
       document.getElementById("manual-time-container").style.display = isManual ? "block" : "none";
-      if (!isManual && isAutoPlaying) {
-        toggleAutoPlay(); // モードをOFFにしたときは自動進行も止める
-      }
+      if (!isManual && isAutoPlaying) toggleAutoPlay();
       updateSystem(); 
     }
 
@@ -239,8 +216,7 @@
         const minSec = timeToSeconds(minStr + ":00");
         const maxSec = timeToSeconds(maxStr + ":00");
         const slider = document.getElementById("time-slider");
-        slider.min = minSec;
-        slider.max = maxSec;
+        slider.min = minSec; slider.max = maxSec;
         if (parseInt(slider.value) < minSec) slider.value = minSec;
         if (parseInt(slider.value) > maxSec) slider.value = maxSec;
         floatCurrentTime = parseFloat(slider.value);
@@ -250,13 +226,11 @@
 
     async function initMap() {
       map = new google.maps.Map(document.getElementById("map"), {
-        center: { lat: 31.428793, lng: 130.754004 },
+        center: { lat: 31.404687, lng: 130.850184 },
         zoom: 11, disableDefaultUI: true, zoomControl: true       
       });
       for (const routeId of routesToLoad) { await loadRouteData(routeId); }
       updateSliderBounds();
-      
-      // 現実時間用のループ（自動進行時も干渉しない）
       setInterval(updateSystem, 1000);
     }
 
@@ -302,8 +276,10 @@
         }
       });
 
+      // 路線によって線の色を分ける
+      const lineColor = routeId === "101" ? "#00AAFF" : "#FF6600";
       systemData[routeId].polyline = new google.maps.Polyline({
-        path: systemData[routeId].allPathCoords, geodesic: true, strokeColor: "#00AAFF", strokeOpacity: 0.5, strokeWeight: 4, map: map
+        path: systemData[routeId].allPathCoords, geodesic: true, strokeColor: lineColor, strokeOpacity: 0.5, strokeWeight: 4, map: map
       });
 
       const resTime = await fetch(`timetable_${routeId}.csv`);
@@ -419,12 +395,31 @@
                   segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse(); 
                 }
 
-                const skipRules = [
-                  { start: "kanoya", end: "kotobuki", removeIds: ["shin_star_1", "shin31", "shin32", "shin33", "shin34", "shin35", "shiyakusho", "26", "27", "28", "shin_star_2"] },
-                  { start: "osaki", end: "oshigiri", removeIds: ["40", "41", "asuparu", "42"] }
-                ];
+                // ★NEW: 路線ごとの独立したスキップルール
+                const allSkipRules = {
+                  "101": [
+                    { start: "kanoya", end: "kotobuki", removeIds: ["shin_star_1", "shin31", "shin32", "shin33", "shin34", "shin35", "shiyakusho", "26", "27", "28", "shin_star_2"] },
+                    { start: "osaki", end: "oshigiri", removeIds: ["40", "41", "asuparu", "42"] }
+                  ],
+                  "102": [
+                    // 平原経由/非経由
+                    { start: "shiyakusho", end: "kawanishi", removeIds: ["9135","9136","9137","9138","9139","9140","9141","9142","9143","hirabaru","9144","9145","9146"] },
+                    { start: "shiyakusho", end: "hirabaru", removeIds: ["135", "136"] },
+                    { start: "hirabaru", end: "kawanishi", removeIds: ["135", "136"] },
+                    // 吾平/論地橋
+                    { start: "myoshu", end: "aira", removeIds: ["9158","9159","9160","ronjibashi","9161","9162","9163","9164","9165","9166","9167"] },
+                    { start: "aira", end: "koyama", removeIds: ["9158","9159","9160","ronjibashi","9161","9162","9163","9164","9165","9166","9167"] },
+                    { start: "myoshu", end: "ronjibashi", removeIds: ["158","159","160","161","162","163","164","165","166","167","168","169","aira","170","171","172","173","174","175","176","177","178","179","180","181","182","183","184","185","186","187","188"] },
+                    { start: "ronjibashi", end: "sakashita", removeIds: ["158","159","160","161","162","163","164","165","166","167","168","169","aira","170","171","172","173","174","175","176","177","178","179","180","181","182","183","184","185","186","187","188"] },
+                    { start: "ronjibashi", end: "koyama", removeIds: ["158","159","160","161","162","163","164","165","166","167","168","169","aira","170","171","172","173","174","175","176","177","178","179","180","181","182","183","184","185","186","187","188"] },
+                    // 内之浦/志布志
+                    { start: "koyama", end: "ariakebashi", removeIds: ["201","202","203","204","205","206","207","208","209","210","211","212","213","214","215","216","217","218","219","220","221","222","223","224","225","226","227","228","229","230","231","232","233","shimobaru","eiwa","higashikushira","osaki","oshigiri","chigomatsu","shibushi_hs","shibushi_eki_ue","shibushi_eki_mae","shibushi","shibushi_port_ent","shibushi_port"] },
+                    { start: "koyama", end: "shimobaru", removeIds: ["ariakebashi","300","301","302","303","304","305","306","307","308","309","310","kaizo","400","401","402","403","404","405","406","407","408","uchinoura"] }
+                  ]
+                };
 
-                skipRules.forEach(rule => {
+                const currentRules = allSkipRules[routeId] || [];
+                currentRules.forEach(rule => {
                   if ((sch[i].stop_id === rule.start && sch[i+1].stop_id === rule.end) || 
                       (sch[i].stop_id === rule.end && sch[i+1].stop_id === rule.start)) {
                     segmentPath = segmentPath.filter(p => !rule.removeIds.includes(p.id));
