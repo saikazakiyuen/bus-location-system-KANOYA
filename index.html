@@ -12,7 +12,7 @@
       position: absolute; bottom: 40px; left: 10px; z-index: 99;
       background: rgba(255, 255, 255, 0.9); padding: 15px; border: 2px solid black;
       border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      width: 250px;
+      width: 260px;
     }
     
     #time-display { font-size: 18px; font-weight: bold; }
@@ -22,12 +22,22 @@
     }
     #time-slider { width: 100%; margin: 10px 0; cursor: pointer; }
     
+    /* ★NEW: 自動進行ボタンのデザイン */
+    #play-btn { 
+      width: 100%; padding: 8px; background-color: #00AAFF; color: white; 
+      border: none; border-radius: 4px; font-weight: bold; cursor: pointer; 
+      margin-bottom: 8px; transition: background 0.3s;
+    }
+    #play-btn:hover { background-color: #0088cc; }
+    #play-btn.playing { background-color: #ff4444; }
+    #play-btn.playing:hover { background-color: #cc0000; }
+    
     #settings-header, #slider-settings-header {
       cursor: pointer; font-weight: bold; display: flex; justify-content: space-between;
       align-items: center; border-top: 1px solid #ccc;
     }
     #settings-header { margin-top: 10px; padding-top: 10px; }
-    #slider-settings-header { font-size: 13px; color: #555; padding-top: 5px; border-top: 1px dashed #aaa; margin-top: 5px; }
+    #slider-settings-header { font-size: 13px; color: #555; padding-top: 5px; border-top: 1px dashed #aaa; margin-top: 10px; }
     
     #settings-content, #slider-settings-content { display: none; margin-top: 10px; }
     #slider-settings-content { font-size: 13px; }
@@ -49,8 +59,21 @@
         <input type="checkbox" id="manual-time-toggle" checked onchange="toggleManualTime()"> 時間指定モード
       </label>
     </div>
+    
     <div id="manual-time-container">
-      <input type="range" id="time-slider" value="21600" min="21600" max="79200" oninput="updateSystem()">
+      <input type="range" id="time-slider" value="21600" min="21600" max="79200" oninput="onSliderDrag()">
+      
+      <!-- ★NEW: 自動進行コントロールパネル -->
+      <div style="margin-top: 5px; padding: 10px; background: #fff; border-radius: 4px; border: 1px solid #ccc;">
+        <button id="play-btn" onclick="toggleAutoPlay()">▶ 自動進行をスタート</button>
+        <div style="font-size: 13px; line-height: 1.6;">
+          <strong>進行速度:</strong><br>
+          <label><input type="radio" name="play-speed" value="30" checked> 1時間を 30秒</label><br>
+          <label><input type="radio" name="play-speed" value="10"> 1時間を 10秒</label><br>
+          <label><input type="radio" name="play-speed" value="custom"> 1時間を <input type="number" id="custom-speed" value="5" min="1" style="width: 45px; padding: 2px;"> 秒</label>
+        </div>
+      </div>
+
       <div id="slider-settings-header" onclick="toggleSliderSettings()">
         <span>詳細設定</span><span id="slider-toggle-icon">▼</span>
       </div>
@@ -59,6 +82,7 @@
         <div>終了: <input type="time" id="slider-max-time" value="22:00" onchange="updateSliderBounds()"></div>
       </div>
     </div>
+    
     <div id="settings-header" onclick="toggleSettings()">
       <span>⚙️ 路線表示設定</span><span id="toggle-icon">▼</span>
     </div>
@@ -74,17 +98,19 @@
     const systemData = {}; 
     let map;
 
+    // --- 自動進行用の変数 ---
+    let isAutoPlaying = false;
+    let autoPlayInterval = null;
+    let floatCurrentTime = 21600; // 滑らかに動かすための浮動小数点の時間記憶
+
+    // --- 画像読み込みキャッシュ ---
     let isBusALoaded = false;
     let isBusBLoaded = false;
-    
     const busAImage = new Image();
     busAImage.onload = () => { isBusALoaded = true; };
-    busAImage.onerror = () => { console.warn("BusA.png が読み込めません"); };
     busAImage.src = "BusA.png"; 
-    
     const busBImage = new Image();
     busBImage.onload = () => { isBusBLoaded = true; };
-    busBImage.onerror = () => { console.warn("BusB.png が読み込めません"); };
     busBImage.src = "BusB.png"; 
 
     const rotatedIconsCacheA = {};
@@ -95,16 +121,12 @@
       const cache = isPartial ? rotatedIconsCacheB : rotatedIconsCacheA;
       const img = isPartial ? busBImage : busAImage;
       const isLoaded = isPartial ? isBusBLoaded : isBusALoaded;
-      const defaultUrl = isPartial ? "BusB.png" : "BusA.png";
 
       if (!isLoaded) {
         return {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 6,
+          path: google.maps.SymbolPath.CIRCLE, scale: 6,
           fillColor: isPartial ? "#00AAFF" : "#FF00AA",
-          fillOpacity: 1,
-          strokeWeight: 2,
-          strokeColor: "#FFFFFF"
+          fillOpacity: 1, strokeWeight: 2, strokeColor: "#FFFFFF"
         };
       }
       
@@ -114,20 +136,86 @@
       if (!cache[normalizedAngle]) {
         const canvas = document.createElement("canvas");
         const size = 40; 
-        canvas.width = size;
-        canvas.height = size;
+        canvas.width = size; canvas.height = size;
         const ctx = canvas.getContext("2d");
-        
         ctx.translate(size / 2, size / 2);
         ctx.rotate((normalizedAngle * Math.PI) / 180);
         ctx.drawImage(img, -8, -16, 16, 32);
         
         cache[normalizedAngle] = {
-          url: canvas.toDataURL(),
-          anchor: new google.maps.Point(size / 2, size / 2)
+          url: canvas.toDataURL(), anchor: new google.maps.Point(size / 2, size / 2)
         };
       }
       return cache[normalizedAngle];
+    }
+
+    // ★NEW: 自動進行のスタート/ストップ処理
+    function toggleAutoPlay() {
+      const btn = document.getElementById("play-btn");
+      const slider = document.getElementById("time-slider");
+      isAutoPlaying = !isAutoPlaying;
+      
+      if (isAutoPlaying) {
+        btn.innerText = "■ 自動進行を停止";
+        btn.classList.add("playing");
+        
+        // スライダーが一番最後まで行っていたら最初に戻してあげる
+        if (parseInt(slider.value) >= parseInt(slider.max)) {
+          slider.value = slider.min;
+        }
+        floatCurrentTime = parseFloat(slider.value);
+        
+        // 1秒間に10回（100msごと）計算して滑らかに動かす
+        autoPlayInterval = setInterval(autoPlayStep, 100); 
+      } else {
+        btn.innerText = "▶ 自動進行をスタート";
+        btn.classList.remove("playing");
+        clearInterval(autoPlayInterval);
+      }
+    }
+
+    // ★NEW: 100msごとに時間を進める処理
+    function autoPlayStep() {
+      let speedSec = 30; // デフォルトは30秒
+      const radios = document.getElementsByName("play-speed");
+      for (let r of radios) {
+        if (r.checked) {
+          if (r.value === "custom") {
+            speedSec = parseFloat(document.getElementById("custom-speed").value) || 1;
+          } else {
+            speedSec = parseFloat(r.value);
+          }
+          break;
+        }
+      }
+
+      // 「1時間をspeedSec秒で進める」ための、100msあたりの進行秒数
+      const delta = (3600 / speedSec) * 0.1; 
+      floatCurrentTime += delta;
+      
+      const slider = document.getElementById("time-slider");
+      if (floatCurrentTime >= parseInt(slider.max)) {
+        floatCurrentTime = parseInt(slider.max);
+        toggleAutoPlay(); // 最後まで到達したら自動で停止
+      }
+      
+      slider.value = Math.floor(floatCurrentTime);
+      updateSystem();
+    }
+
+    // 手動でスライダーをドラッグした時の処理
+    function onSliderDrag() {
+      floatCurrentTime = parseFloat(document.getElementById("time-slider").value);
+      updateSystem();
+    }
+
+    function toggleManualTime() {
+      const isManual = document.getElementById("manual-time-toggle").checked;
+      document.getElementById("manual-time-container").style.display = isManual ? "block" : "none";
+      if (!isManual && isAutoPlaying) {
+        toggleAutoPlay(); // モードをOFFにしたときは自動進行も止める
+      }
+      updateSystem(); 
     }
 
     function toggleSettings() {
@@ -135,12 +223,6 @@
       const icon = document.getElementById("toggle-icon");
       content.style.display = content.style.display === "block" ? "none" : "block";
       icon.innerText = content.style.display === "block" ? "▲" : "▼";
-    }
-
-    function toggleManualTime() {
-      const isManual = document.getElementById("manual-time-toggle").checked;
-      document.getElementById("manual-time-container").style.display = isManual ? "block" : "none";
-      updateSystem(); 
     }
 
     function toggleSliderSettings() {
@@ -161,6 +243,7 @@
         slider.max = maxSec;
         if (parseInt(slider.value) < minSec) slider.value = minSec;
         if (parseInt(slider.value) > maxSec) slider.value = maxSec;
+        floatCurrentTime = parseFloat(slider.value);
         updateSystem();
       }
     }
@@ -168,16 +251,12 @@
     async function initMap() {
       map = new google.maps.Map(document.getElementById("map"), {
         center: { lat: 31.428793, lng: 130.754004 },
-        zoom: 11,
-        disableDefaultUI: true, 
-        zoomControl: true       
+        zoom: 11, disableDefaultUI: true, zoomControl: true       
       });
-
-      for (const routeId of routesToLoad) {
-        await loadRouteData(routeId);
-      }
-      
+      for (const routeId of routesToLoad) { await loadRouteData(routeId); }
       updateSliderBounds();
+      
+      // 現実時間用のループ（自動進行時も干渉しない）
       setInterval(updateSystem, 1000);
     }
 
@@ -216,7 +295,7 @@
               icon: {
                 path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: "#FF0000",
                 fillOpacity: 1, strokeWeight: 2, strokeColor: "#FFFFFF",
-                labelOrigin: new google.maps.Point(0, -4) // ★変更点：文字の距離を -18 から -4（約1/4）に短縮
+                labelOrigin: new google.maps.Point(0, -4)
               }
             });
           }
@@ -238,18 +317,12 @@
       });
 
       for (const tripId in schedulesByTrip) {
-        const marker = new google.maps.Marker({
-          map: map,
-          icon: getRotatedIconConfig(0, tripId),
-          visible: false
-        });
-
+        const marker = new google.maps.Marker({ map: map, icon: getRotatedIconConfig(0, tripId), visible: false });
         const displayTripId = tripId.includes('*') ? tripId.replace('*', '') + ' (区間便)' : tripId;
         const infoWindow = new google.maps.InfoWindow({
           content: `<div style="padding: 5px; font-size: 16px; font-weight: bold; text-align: center;">便名: ${displayTripId}</div>`
         });
         marker.addListener("click", () => infoWindow.open(map, marker));
-
         systemData[routeId].trips.push({ tripId: tripId, schedule: schedulesByTrip[tripId], marker: marker });
       }
     }
@@ -341,12 +414,11 @@
               let segmentPath = [];
               if (idxA !== undefined && idxB !== undefined) {
                 if (idxA < idxB) {
-                  segmentPath = data.allPathCoords.slice(idxA, idxB + 1); // 往路
+                  segmentPath = data.allPathCoords.slice(idxA, idxB + 1); 
                 } else {
-                  segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse(); // 復路
+                  segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse(); 
                 }
 
-                // ★変更点: 新ポイント対応の最新の迂回ルール
                 const skipRules = [
                   { start: "kanoya", end: "kotobuki", removeIds: ["shin_star_1", "shin31", "shin32", "shin33", "shin34", "shin35", "shiyakusho", "26", "27", "28", "shin_star_2"] },
                   { start: "osaki", end: "oshigiri", removeIds: ["40", "41", "asuparu", "42", "43"] }
@@ -363,11 +435,9 @@
               }
 
               const pathLatLng = segmentPath.map(p => new google.maps.LatLng(p.lat, p.lng));
-              
               const currentData = getPosAndHeadingAlongPath(pathLatLng, fraction);
               trip.marker.setPosition(currentData.pos);
               trip.marker.setIcon(getRotatedIconConfig(currentData.heading, trip.tripId));
-              
               break;
             }
           }
