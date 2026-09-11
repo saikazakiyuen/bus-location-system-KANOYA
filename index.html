@@ -32,6 +32,19 @@
     #settings-content, #slider-settings-content { display: none; margin-top: 10px; }
     #slider-settings-content { font-size: 13px; }
     .route-toggle { font-size: 16px; margin-top: 10px; display: block; cursor: pointer; }
+    
+    /* ★NEW: 停留所名の吹き出しデザイン */
+    .stop-label {
+      background-color: rgba(255, 255, 255, 0.9);
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 12px;
+      font-weight: bold;
+      color: #333;
+      white-space: nowrap;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
@@ -125,7 +138,6 @@
     async function loadRouteData(routeId) {
       systemData[routeId] = { stops: {}, stopIndices: {}, allPathCoords: [], trips: [], polyline: null };
 
-      // ★NEW: 表示したい停留所リスト(CSV)を読み込む
       const displayStopsMap = new Map();
       try {
         const resDisplay = await fetch(`display_stops_${routeId}.csv`);
@@ -134,16 +146,14 @@
           const displayRows = Papa.parse(displayText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
           displayRows.forEach(row => {
             if (row.stop_id) {
-              // IDと日本語名をペアで記憶（名前が空欄の場合はIDをそのまま使う）
               displayStopsMap.set(row.stop_id, row.stop_name || row.stop_id);
             }
           });
         }
       } catch(e) {
-        console.log(`display_stops_${routeId}.csv が見つかりません。すべての停留所を表示します。`);
+        console.log(`display_stops_${routeId}.csv が見つかりません。`);
       }
 
-      // 経路データ(route_101.csv)の読み込み
       const resRoute = await fetch(`route_${routeId}.csv`);
       const routeText = await resRoute.text();
       const routeRows = Papa.parse(routeText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
@@ -156,22 +166,26 @@
           systemData[routeId].stops[row.id] = pos;
           systemData[routeId].stopIndices[row.id] = systemData[routeId].allPathCoords.length - 1;
           
-          // ★変更点: 新しいCSVに登録されている場合のみマーカーを地図に置く
-          // (もしCSVが読み込めなかった場合は、今まで通りすべて置く)
           if (displayStopsMap.size === 0 || displayStopsMap.has(row.id)) {
             const displayName = displayStopsMap.get(row.id) || row.id;
+            
+            // ★変更点: 停留所マーカーに「label」を追加し、CSSクラスを適用
             new google.maps.Marker({ 
               position: pos, 
               map: map, 
               title: displayName,
-              // 大きすぎる「停」ラベルを外し、スッキリした標準の赤いピンにする
+              label: {
+                text: displayName,
+                className: "stop-label" // 上で作ったCSSデザインを適用
+              },
               icon: {
                 path: google.maps.SymbolPath.CIRCLE,
-                scale: 5,
+                scale: 4,
                 fillColor: "#FF0000",
                 fillOpacity: 1,
                 strokeWeight: 2,
-                strokeColor: "#FFFFFF"
+                strokeColor: "#FFFFFF",
+                labelOrigin: new google.maps.Point(0, -18) // 赤い点に被らないように文字を上にズラす
               }
             });
           }
@@ -182,7 +196,6 @@
         path: systemData[routeId].allPathCoords, geodesic: true, strokeColor: "#00AAFF", strokeOpacity: 0.5, strokeWeight: 4, map: map
       });
 
-      // 時刻表データ(timetable_101.csv)の読み込み
       const resTime = await fetch(`timetable_${routeId}.csv`);
       const timeText = await resTime.text();
       const timeRows = Papa.parse(timeText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
