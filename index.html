@@ -233,7 +233,8 @@
     }
 
     async function loadRouteData(routeId) {
-      systemData[routeId] = { stops: {}, stopIndices: {}, allPathCoords: [], trips: [], polyline: null };
+      // ★NEW: ポリラインを複数持てるように pathSegments と polylines を追加
+      systemData[routeId] = { stops: {}, stopIndices: {}, allPathCoords: [], pathSegments: [], polylines: [], trips: [] };
 
       const displayStopsMap = new Map();
       try {
@@ -251,8 +252,25 @@
       const routeText = await resRoute.text();
       const routeRows = Papa.parse(routeText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
 
+      let currentSegment = [];
+
       routeRows.forEach(row => {
         const pos = { id: row.id, lat: parseFloat(row.lat), lng: parseFloat(row.lng) };
+        
+        // ★NEW: 内之浦や志布志などの分岐でワープ線が引かれないように、距離が1.5km以上離れていたら線を区切る
+        if (currentSegment.length > 0) {
+            const prevPos = currentSegment[currentSegment.length - 1];
+            const dist = google.maps.geometry.spherical.computeDistanceBetween(
+                new google.maps.LatLng(prevPos.lat, prevPos.lng), 
+                new google.maps.LatLng(pos.lat, pos.lng)
+            );
+            if (dist > 1500) { 
+                systemData[routeId].pathSegments.push(currentSegment);
+                currentSegment = [];
+            }
+        }
+        
+        currentSegment.push(pos);
         systemData[routeId].allPathCoords.push(pos);
 
         if (row.type === 'stop') {
@@ -273,10 +291,18 @@
           }
         }
       });
+      
+      if (currentSegment.length > 0) {
+          systemData[routeId].pathSegments.push(currentSegment);
+      }
 
       const lineColor = routeId === "101" ? "#00AAFF" : "#FF6600";
-      systemData[routeId].polyline = new google.maps.Polyline({
-        path: systemData[routeId].allPathCoords, geodesic: true, strokeColor: lineColor, strokeOpacity: 0.5, strokeWeight: 4, map: map
+      
+      // 区切られた線分ごとにPolylineを生成
+      systemData[routeId].pathSegments.forEach(seg => {
+          systemData[routeId].polylines.push(new google.maps.Polyline({
+              path: seg, geodesic: true, strokeColor: lineColor, strokeOpacity: 0.5, strokeWeight: 4, map: map
+          }));
       });
 
       const resTime = await fetch(`timetable_${routeId}.csv`);
@@ -353,7 +379,8 @@
         const data = systemData[routeId];
         if(!data) continue;
         
-        data.polyline.setVisible(isVisible);
+        // 複数ポリラインの表示切り替え
+        data.polylines.forEach(p => p.setVisible(isVisible));
 
         data.trips.forEach(trip => {
           if (!isVisible) { trip.marker.setVisible(false); return; }
@@ -395,23 +422,21 @@
                   segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse(); 
                 }
 
-                // ★NEW: ご指定のベース設定(101)と、IDプレフィックスを用いた完全対応版(102)
+                // ★NEW: 修正版の完全スキップルール
                 const allSkipRules = {
                   "101": [
                     { start: "kanoya", end: "kotobuki", removeIds: ["shin_star_1", "shin31", "shin32", "shin33", "shin34", "shin35", "shiyakusho", "26", "27", "28", "shin_star_2"] },
                     { start: "osaki", end: "oshigiri", removeIds: ["40", "41", "asuparu", "42"] }
                   ],
                   "102": [
-                    { start: "furue", end: "taiikudai", removeIds: ["a26","a27","a28","a29","a30","a31","a32","a33","a34","a35","a36","a37","a38","a39","a40","arahira","a41","a42","a43","a44","a45","a46","a47","a48","a49","a50","a51","a52","a53","a54","a55","a56","a57","a58","a59","a60","a61","a62","a63","a64","a65","a66","a67","a68","a69","a70","a71","a72","a73","a74","a75","a76","takasu","a77","a78","a79","a80","a81","a82","a83","a84","a85","a86","a87","a88","a89","a90","a91","a92","a93","a94","a95","a96","a97","a98","a99","a100","a101","okamura","a102","a103","a104","a105","a106","a107"] },
-                    { start: "taiikudai", end: "kokutai", removeIds: ["a26","a27","a28","a29","a30","a31","a32","a33","a34","a35","a36","a37","a38","a39","a40","arahira","a41","a42","a43","a44","a45","a46","a47","a48","a49","a50","a51","a52","a53","a54","a55","a56","a57","a58","a59","a60","a61","a62","a63","a64","a65","a66","a67","a68","a69","a70","a71","a72","a73","a74","a75","a76","takasu","a77","a78","a79","a80","a81","a82","a83","a84","a85","a86","a87","a88","a89","a90","a91","a92","a93","a94","a95","a96","a97","a98","a99","a100","a101","okamura","a102","a103","a104","a105","a106","a107"] },
-                    { start: "furue", end: "kokutai", removeIds: ["t9","t10","t11","t12","t13","taiikudai","takasu","a77","a78","a79"] },
                     { start: "shiyakusho", end: "kawanishi", removeIds: ["h9135","h9136","h9137","h9138","h9139","h9140","h9141","h9142","h9143","hirabaru","h9144","h9145","h9146"] },
-                    { start: "shiyakusho", end: "hirabaru", removeIds: ["h135","h136"] },
-                    { start: "hirabaru", end: "kawanishi", removeIds: ["h135","h136"] },
+                    { start: "shiyakusho", end: "hirabaru", removeIds: ["135", "136"] },
+                    { start: "hirabaru", end: "kawanishi", removeIds: ["135", "136"] },
                     { start: "myoshu", end: "aira", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
                     { start: "aira", end: "sakashita", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
                     { start: "myoshu", end: "ronjibashi", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
                     { start: "ronjibashi", end: "sakashita", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
+                    // 内之浦と志布志の分断ルール
                     { start: "koyama", end: "ariakebashi", removeIds: ["s500","s501","s502","s503","s504","s505","s506","s507","s508","s509","s510","s511","s512","s513","shimobaru","s514","s515","s516","s517","s518","s519","s520","s521","eiwa","s522","higashikushira","s523","s524","s525","s526","osaki","s527","s528","s532","s533","s534","oshigiri","s535","s536","chigomatsu","shibushi_hs","s537","shibushi_eki_ue","s538","shibushi_eki_mae","s539","shibushi","s540","s541","shibushi_port_ent","s542","s543","s544","s545","s546","shibushi_port"] },
                     { start: "koyama", end: "shimobaru", removeIds: ["u201","u202","u203","u204","u205","u206","u207","u208","u209","u210","u211","u212","u213","u214","u215","u216","u217","u218","u219","u220","u221","u222","u223","u224","u225","u226","u227","u228","u229","u230","u231","u232","u233","ariakebashi","u300","u301","u302","u303","u304","u305","u306","u307","u308","u309","u310","kaizo","u400","u401","u402","u403","u404","u405","u406","u407","u408","uchinoura"] }
                   ]
