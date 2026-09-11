@@ -125,19 +125,56 @@
     async function loadRouteData(routeId) {
       systemData[routeId] = { stops: {}, stopIndices: {}, allPathCoords: [], trips: [], polyline: null };
 
+      // ★NEW: 表示したい停留所リスト(CSV)を読み込む
+      const displayStopsMap = new Map();
+      try {
+        const resDisplay = await fetch(`display_stops_${routeId}.csv`);
+        if (resDisplay.ok) {
+          const displayText = await resDisplay.text();
+          const displayRows = Papa.parse(displayText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
+          displayRows.forEach(row => {
+            if (row.stop_id) {
+              // IDと日本語名をペアで記憶（名前が空欄の場合はIDをそのまま使う）
+              displayStopsMap.set(row.stop_id, row.stop_name || row.stop_id);
+            }
+          });
+        }
+      } catch(e) {
+        console.log(`display_stops_${routeId}.csv が見つかりません。すべての停留所を表示します。`);
+      }
+
+      // 経路データ(route_101.csv)の読み込み
       const resRoute = await fetch(`route_${routeId}.csv`);
       const routeText = await resRoute.text();
       const routeRows = Papa.parse(routeText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
 
       routeRows.forEach(row => {
-        // ★変更点: 各座標データに「id」を持たせて保存する
         const pos = { id: row.id, lat: parseFloat(row.lat), lng: parseFloat(row.lng) };
         systemData[routeId].allPathCoords.push(pos);
 
         if (row.type === 'stop') {
           systemData[routeId].stops[row.id] = pos;
           systemData[routeId].stopIndices[row.id] = systemData[routeId].allPathCoords.length - 1;
-          new google.maps.Marker({ position: pos, map: map, label: "停", title: row.id });
+          
+          // ★変更点: 新しいCSVに登録されている場合のみマーカーを地図に置く
+          // (もしCSVが読み込めなかった場合は、今まで通りすべて置く)
+          if (displayStopsMap.size === 0 || displayStopsMap.has(row.id)) {
+            const displayName = displayStopsMap.get(row.id) || row.id;
+            new google.maps.Marker({ 
+              position: pos, 
+              map: map, 
+              title: displayName,
+              // 大きすぎる「停」ラベルを外し、スッキリした標準の赤いピンにする
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 5,
+                fillColor: "#FF0000",
+                fillOpacity: 1,
+                strokeWeight: 2,
+                strokeColor: "#FFFFFF"
+              }
+            });
+          }
         }
       });
 
@@ -145,6 +182,7 @@
         path: systemData[routeId].allPathCoords, geodesic: true, strokeColor: "#00AAFF", strokeOpacity: 0.5, strokeWeight: 4, map: map
       });
 
+      // 時刻表データ(timetable_101.csv)の読み込み
       const resTime = await fetch(`timetable_${routeId}.csv`);
       const timeText = await resTime.text();
       const timeRows = Papa.parse(timeText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
@@ -250,16 +288,12 @@
                   segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse();
                 }
 
-                // ★NEW: ここでショートカット（迂回）ルールを適用！
                 const skipRules = [
-                  // 鹿屋〜寿町 を直行する便は、市役所前とPoint26〜28をルートから消す
                   { start: "kanoya", end: "kotobuki", removeIds: ["shiyakusho", "26", "27", "28"] },
-                  // 大崎三文字〜押切 を直行する便は、あすぱる大崎とPoint40〜43をルートから消す
                   { start: "osaki", end: "oshigiri", removeIds: ["40", "41", "asuparu", "42", "43"] }
                 ];
 
                 skipRules.forEach(rule => {
-                  // 出発地と到着地が一致した場合のみ、指定されたIDを配列から除外（filter）する
                   if ((sch[i].stop_id === rule.start && sch[i+1].stop_id === rule.end) || 
                       (sch[i].stop_id === rule.end && sch[i+1].stop_id === rule.start)) {
                     segmentPath = segmentPath.filter(p => !rule.removeIds.includes(p.id));
