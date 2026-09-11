@@ -12,28 +12,59 @@
       position: absolute; bottom: 40px; left: 10px; z-index: 99;
       background: rgba(255, 255, 255, 0.9); padding: 15px; border: 2px solid black;
       border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      width: 250px; /* スライダーが操作しやすいように少し幅を固定 */
     }
     
     #time-display { font-size: 18px; font-weight: bold; }
     
-    #settings-header {
-      cursor: pointer; font-weight: bold; display: flex; justify-content: space-between;
-      align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #ccc;
+    /* ★NEW: 時間指定モード関連のスタイル */
+    #manual-time-container {
+      display: none; margin-top: 10px; padding: 10px; background: #e6f2ff; border-radius: 5px;
     }
-    #settings-content { display: none; margin-top: 10px; }
+    #time-slider { width: 100%; margin: 10px 0; cursor: pointer; }
+    
+    #settings-header, #slider-settings-header {
+      cursor: pointer; font-weight: bold; display: flex; justify-content: space-between;
+      align-items: center; border-top: 1px solid #ccc;
+    }
+    #settings-header { margin-top: 10px; padding-top: 10px; }
+    #slider-settings-header { font-size: 13px; color: #555; padding-top: 5px; border-top: 1px dashed #aaa; margin-top: 5px; }
+    
+    #settings-content, #slider-settings-content { display: none; margin-top: 10px; }
+    #slider-settings-content { font-size: 13px; }
     .route-toggle { font-size: 16px; margin-top: 10px; display: block; cursor: pointer; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
   <div id="ui-panel">
-    <div id="time-display">時刻: --:--:--</div>
+    <div id="time-display">現在時刻: --:--:--</div>
+    
+    <!-- ★NEW: 時間指定モードのスイッチ -->
+    <div style="margin-top: 10px;">
+      <label style="cursor: pointer; font-weight: bold; font-size: 15px; color: #0066cc;">
+        <input type="checkbox" id="manual-time-toggle" onchange="toggleManualTime()"> 時間指定モード
+      </label>
+    </div>
+    
+    <!-- ★NEW: 時間指定スライダーと詳細設定（初期は非表示） -->
+    <div id="manual-time-container">
+      <input type="range" id="time-slider" value="68400" min="68400" max="75600" oninput="updateSystem()">
+      
+      <div id="slider-settings-header" onclick="toggleSliderSettings()">
+        <span>詳細設定</span><span id="slider-toggle-icon">▼</span>
+      </div>
+      <div id="slider-settings-content">
+        <div style="margin-bottom: 5px;">開始: <input type="time" id="slider-min-time" value="19:00" onchange="updateSliderBounds()"></div>
+        <div>終了: <input type="time" id="slider-max-time" value="21:00" onchange="updateSliderBounds()"></div>
+      </div>
+    </div>
+    
     <div id="settings-header" onclick="toggleSettings()">
-      <span>⚙️ 表示設定</span>
-      <span id="toggle-icon">▼</span>
+      <span>⚙️ 路線表示設定</span><span id="toggle-icon">▼</span>
     </div>
     <div id="settings-content">
-      <label class="route-toggle"><input type="checkbox" id="chk-route-101" checked> 系統101 (垂水〜鹿屋〜志布志)</label>
+      <label class="route-toggle"><input type="checkbox" id="chk-route-101" checked onchange="updateSystem()"> 系統101 (垂水〜志布志)</label>
     </div>
   </div>
   
@@ -44,15 +75,49 @@
     const systemData = {}; 
     let map;
 
+    // --- UI制御用の関数 ---
     function toggleSettings() {
       const content = document.getElementById("settings-content");
       const icon = document.getElementById("toggle-icon");
       if (content.style.display === "block") {
-        content.style.display = "none";
-        icon.innerText = "▼";
+        content.style.display = "none"; icon.innerText = "▼";
       } else {
-        content.style.display = "block";
-        icon.innerText = "▲";
+        content.style.display = "block"; icon.innerText = "▲";
+      }
+    }
+
+    // ★NEW: 時間指定モードの表示切り替え
+    function toggleManualTime() {
+      const isManual = document.getElementById("manual-time-toggle").checked;
+      document.getElementById("manual-time-container").style.display = isManual ? "block" : "none";
+      updateSystem(); // 切り替えた瞬間に地図を更新
+    }
+
+    // ★NEW: スライダー詳細設定（アコーディオン）の開閉
+    function toggleSliderSettings() {
+      const content = document.getElementById("slider-settings-content");
+      const icon = document.getElementById("slider-toggle-icon");
+      if (content.style.display === "block") {
+        content.style.display = "none"; icon.innerText = "▼";
+      } else {
+        content.style.display = "block"; icon.innerText = "▲";
+      }
+    }
+
+    // ★NEW: スライダーの両端の時間を再設定する機能
+    function updateSliderBounds() {
+      const minStr = document.getElementById("slider-min-time").value;
+      const maxStr = document.getElementById("slider-max-time").value;
+      if (minStr && maxStr) {
+        const minSec = timeToSeconds(minStr + ":00");
+        const maxSec = timeToSeconds(maxStr + ":00");
+        const slider = document.getElementById("time-slider");
+        slider.min = minSec;
+        slider.max = maxSec;
+        // スライダーの現在値が範囲外になったら補正する
+        if (parseInt(slider.value) < minSec) slider.value = minSec;
+        if (parseInt(slider.value) > maxSec) slider.value = maxSec;
+        updateSystem();
       }
     }
 
@@ -67,11 +132,15 @@
       for (const routeId of routesToLoad) {
         await loadRouteData(routeId);
       }
+      
+      // スライダーの初期設定を適用
+      updateSliderBounds();
+      
+      // 1秒ごとのループ更新（時間指定モードのときは自動進行しないが処理は回す）
       setInterval(updateSystem, 1000);
     }
 
     async function loadRouteData(routeId) {
-      // ★改善点1: 各停留所が、路線全体の中で「何番目の座標か」を記録する方式に変更
       systemData[routeId] = { stops: {}, stopIndices: {}, allPathCoords: [], trips: [], polyline: null };
 
       const resRoute = await fetch(`route_${routeId}.csv`);
@@ -84,7 +153,6 @@
 
         if (row.type === 'stop') {
           systemData[routeId].stops[row.id] = pos;
-          // 配列（全体の座標リスト）の最後尾のインデックスを記憶
           systemData[routeId].stopIndices[row.id] = systemData[routeId].allPathCoords.length - 1;
           new google.maps.Marker({ position: pos, map: map, label: "停", title: row.id });
         }
@@ -143,9 +211,27 @@
     }
 
     function updateSystem() {
-      const now = new Date();
-      document.getElementById("time-display").innerText = "時刻: " + now.toLocaleTimeString();
-      const currentSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+      // ★NEW: 時間指定モードがONかOFFかを取得
+      const isManual = document.getElementById("manual-time-toggle").checked;
+      let currentSeconds;
+
+      if (isManual) {
+        // ONの場合：スライダーの値を「現在の秒数」として強制的に扱う
+        currentSeconds = parseInt(document.getElementById("time-slider").value);
+        const h = Math.floor(currentSeconds / 3600);
+        const m = Math.floor((currentSeconds % 3600) / 60);
+        const s = currentSeconds % 60;
+        
+        // パネルの表示をスライダーの時間に上書きし、色を変えて目立たせる
+        document.getElementById("time-display").innerText = `指定時刻: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        document.getElementById("time-display").style.color = "#0066cc";
+      } else {
+        // OFFの場合：現実のパソコンの時計を使う（これまで通り）
+        const now = new Date();
+        document.getElementById("time-display").innerText = "現在時刻: " + now.toLocaleTimeString();
+        document.getElementById("time-display").style.color = "black";
+        currentSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+      }
 
       for (const routeId of routesToLoad) {
         const isVisible = document.getElementById(`chk-route-${routeId}`).checked;
@@ -175,17 +261,14 @@
             if (currentSeconds >= timeA && currentSeconds <= timeB) {
               const fraction = (currentSeconds - timeA) / (timeB - timeA);
               
-              // ★改善点2: 区間（A地点〜B地点）のインデックスを取得して切り出す
               const idxA = data.stopIndices[sch[i].stop_id];
               const idxB = data.stopIndices[sch[i+1].stop_id];
               
               let segmentPath = [];
               if (idxA !== undefined && idxB !== undefined) {
                 if (idxA < idxB) {
-                  // 往路（正方向）の場合：AからBまでの全座標を切り出す
                   segmentPath = data.allPathCoords.slice(idxA, idxB + 1);
                 } else {
-                  // 復路（逆方向）の場合：BからAまでを切り出して逆順にする（今後の拡張対応）
                   segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse();
                 }
               } else {
