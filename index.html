@@ -33,17 +33,10 @@
     #slider-settings-content { font-size: 13px; }
     .route-toggle { font-size: 16px; margin-top: 10px; display: block; cursor: pointer; }
     
-    /* ★NEW: 停留所名の吹き出しデザイン */
     .stop-label {
-      background-color: rgba(255, 255, 255, 0.9);
-      border: 1px solid #555;
-      border-radius: 4px;
-      padding: 3px 6px;
-      font-size: 12px;
-      font-weight: bold;
-      color: #333;
-      white-space: nowrap;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      background-color: rgba(255, 255, 255, 0.9); border: 1px solid #555; border-radius: 4px;
+      padding: 3px 6px; font-size: 12px; font-weight: bold; color: #333;
+      white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
@@ -51,13 +44,11 @@
 <body>
   <div id="ui-panel">
     <div id="time-display">現在時刻: --:--:--</div>
-    
     <div style="margin-top: 10px;">
       <label style="cursor: pointer; font-weight: bold; font-size: 15px; color: #0066cc;">
         <input type="checkbox" id="manual-time-toggle" onchange="toggleManualTime()"> 時間指定モード
       </label>
     </div>
-    
     <div id="manual-time-container">
       <input type="range" id="time-slider" value="68400" min="68400" max="75600" oninput="updateSystem()">
       <div id="slider-settings-header" onclick="toggleSliderSettings()">
@@ -68,7 +59,6 @@
         <div>終了: <input type="time" id="slider-max-time" value="21:00" onchange="updateSliderBounds()"></div>
       </div>
     </div>
-    
     <div id="settings-header" onclick="toggleSettings()">
       <span>⚙️ 路線表示設定</span><span id="toggle-icon">▼</span>
     </div>
@@ -83,6 +73,45 @@
     const routesToLoad = ["101"]; 
     const systemData = {}; 
     let map;
+
+    // ★NEW: バスの画像を事前に読み込み、回転用キャッシュを準備
+    let isBusImageLoaded = false;
+    const busImage = new Image();
+    busImage.onload = () => { isBusImageLoaded = true; };
+    busImage.src = "bus.png"; 
+    const rotatedIconsCache = {};
+
+    // ★NEW: 角度に応じた画像をCanvasで生成する関数
+    function getRotatedIconConfig(heading) {
+      if (!isBusImageLoaded) {
+        // 画像読み込み前は仮の設定を返す（横16、縦32）
+        return { url: "bus.png", scaledSize: new google.maps.Size(16, 32), anchor: new google.maps.Point(8, 16) };
+      }
+      
+      const angle = Math.round(heading) % 360;
+      const normalizedAngle = angle < 0 ? angle + 360 : angle;
+
+      // まだ生成していない角度なら、Canvasで回転させて記憶（キャッシュ）する
+      if (!rotatedIconsCache[normalizedAngle]) {
+        const canvas = document.createElement("canvas");
+        // 回転しても見切れないように正方形(40x40)のキャンバスを用意
+        const size = 40; 
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        
+        ctx.translate(size / 2, size / 2);
+        ctx.rotate((normalizedAngle * Math.PI) / 180);
+        // キャンバスの中央に画像を配置（横16、縦32）
+        ctx.drawImage(busImage, -8, -16, 16, 32);
+        
+        rotatedIconsCache[normalizedAngle] = {
+          url: canvas.toDataURL(),
+          anchor: new google.maps.Point(size / 2, size / 2) // キャンバスの中心を地図上の座標に合わせる
+        };
+      }
+      return rotatedIconsCache[normalizedAngle];
+    }
 
     function toggleSettings() {
       const content = document.getElementById("settings-content");
@@ -145,14 +174,10 @@
           const displayText = await resDisplay.text();
           const displayRows = Papa.parse(displayText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
           displayRows.forEach(row => {
-            if (row.stop_id) {
-              displayStopsMap.set(row.stop_id, row.stop_name || row.stop_id);
-            }
+            if (row.stop_id) displayStopsMap.set(row.stop_id, row.stop_name || row.stop_id);
           });
         }
-      } catch(e) {
-        console.log(`display_stops_${routeId}.csv が見つかりません。`);
-      }
+      } catch(e) {}
 
       const resRoute = await fetch(`route_${routeId}.csv`);
       const routeText = await resRoute.text();
@@ -168,24 +193,13 @@
           
           if (displayStopsMap.size === 0 || displayStopsMap.has(row.id)) {
             const displayName = displayStopsMap.get(row.id) || row.id;
-            
-            // ★変更点: 停留所マーカーに「label」を追加し、CSSクラスを適用
             new google.maps.Marker({ 
-              position: pos, 
-              map: map, 
-              title: displayName,
-              label: {
-                text: displayName,
-                className: "stop-label" // 上で作ったCSSデザインを適用
-              },
+              position: pos, map: map, title: displayName,
+              label: { text: displayName, className: "stop-label" },
               icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 4,
-                fillColor: "#FF0000",
-                fillOpacity: 1,
-                strokeWeight: 2,
-                strokeColor: "#FFFFFF",
-                labelOrigin: new google.maps.Point(0, -18) // 赤い点に被らないように文字を上にズラす
+                path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: "#FF0000",
+                fillOpacity: 1, strokeWeight: 2, strokeColor: "#FFFFFF",
+                labelOrigin: new google.maps.Point(0, -18)
               }
             });
           }
@@ -209,7 +223,7 @@
       for (const tripId in schedulesByTrip) {
         const marker = new google.maps.Marker({
           map: map,
-          icon: { url: "bus.png", scaledSize: new google.maps.Size(64, 64), anchor: new google.maps.Point(32, 32) },
+          icon: getRotatedIconConfig(0), // 初期状態のアイコン
           visible: false
         });
 
@@ -227,7 +241,8 @@
       return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
     }
 
-    function getPointAlongPath(path, fraction) {
+    // ★変更点: 現在地(pos)と、進行方向の角度(heading)の両方を計算して返すように改良
+    function getPosAndHeadingAlongPath(path, fraction) {
       let total = 0, dists = [];
       for (let i = 0; i < path.length - 1; i++) {
         const d = google.maps.geometry.spherical.computeDistanceBetween(path[i], path[i+1]);
@@ -237,11 +252,18 @@
       let curr = 0;
       for (let i = 0; i < path.length - 1; i++) {
         if (curr + dists[i] >= target) {
-          return google.maps.geometry.spherical.interpolate(path[i], path[i+1], (target - curr) / dists[i]);
+          const segFraction = (target - curr) / dists[i];
+          const pos = google.maps.geometry.spherical.interpolate(path[i], path[i+1], segFraction);
+          const heading = google.maps.geometry.spherical.computeHeading(path[i], path[i+1]);
+          return { pos: pos, heading: heading };
         }
         curr += dists[i];
       }
-      return path[path.length - 1];
+      // 終点付近の場合の処理
+      return { 
+        pos: path[path.length - 1], 
+        heading: path.length > 1 ? google.maps.geometry.spherical.computeHeading(path[path.length - 2], path[path.length - 1]) : 0 
+      };
     }
 
     function updateSystem() {
@@ -280,8 +302,17 @@
           }
           trip.marker.setVisible(true);
 
-          if (currentSeconds <= firstTime) { trip.marker.setPosition(data.stops[sch[0].stop_id]); return; }
-          if (currentSeconds >= lastTime) { trip.marker.setPosition(data.stops[sch[sch.length - 1].stop_id]); return; }
+          // 待機中のバスの向きは、出発直後の向き（または到着直前の向き）に設定
+          if (currentSeconds <= firstTime) { 
+            trip.marker.setPosition(data.stops[sch[0].stop_id]); 
+            // 始発停留所での待機中は真北(0度)を向かせておく
+            trip.marker.setIcon(getRotatedIconConfig(0));
+            return; 
+          }
+          if (currentSeconds >= lastTime) { 
+            trip.marker.setPosition(data.stops[sch[sch.length - 1].stop_id]); 
+            return; 
+          }
 
           for (let i = 0; i < sch.length - 1; i++) {
             const timeA = timeToSeconds(sch[i].time);
@@ -312,13 +343,17 @@
                     segmentPath = segmentPath.filter(p => !rule.removeIds.includes(p.id));
                   }
                 });
-
               } else {
                 segmentPath = [data.stops[sch[i].stop_id], data.stops[sch[i+1].stop_id]];
               }
 
               const pathLatLng = segmentPath.map(p => new google.maps.LatLng(p.lat, p.lng));
-              trip.marker.setPosition(getPointAlongPath(pathLatLng, fraction));
+              
+              // ★変更点: 現在地(pos)と角度(heading)を取得し、アイコンをリアルタイムに更新
+              const currentData = getPosAndHeadingAlongPath(pathLatLng, fraction);
+              trip.marker.setPosition(currentData.pos);
+              trip.marker.setIcon(getRotatedIconConfig(currentData.heading));
+              
               break;
             }
           }
