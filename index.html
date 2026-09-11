@@ -85,7 +85,6 @@
       <span>⚙️ 路線表示設定</span><span id="toggle-icon">▼</span>
     </div>
     <div id="settings-content">
-      <!-- ★NEW: 系統102のチェックボックスを追加 -->
       <label class="route-toggle"><input type="checkbox" id="chk-route-101" checked onchange="updateSystem()"> 系統101 (垂水〜志布志)</label>
       <label class="route-toggle"><input type="checkbox" id="chk-route-102" checked onchange="updateSystem()"> 系統102 (鹿屋〜高山・内之浦)</label>
     </div>
@@ -94,7 +93,6 @@
   <div id="map"></div>
 
   <script>
-    // ★NEW: 2つの路線を読み込む
     const routesToLoad = ["101", "102"]; 
     const systemData = {}; 
     let map;
@@ -276,30 +274,31 @@
         }
       });
 
-      // 路線によって線の色を分ける
       const lineColor = routeId === "101" ? "#00AAFF" : "#FF6600";
       systemData[routeId].polyline = new google.maps.Polyline({
         path: systemData[routeId].allPathCoords, geodesic: true, strokeColor: lineColor, strokeOpacity: 0.5, strokeWeight: 4, map: map
       });
 
       const resTime = await fetch(`timetable_${routeId}.csv`);
-      const timeText = await resTime.text();
-      const timeRows = Papa.parse(timeText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
+      if (resTime.ok) {
+        const timeText = await resTime.text();
+        const timeRows = Papa.parse(timeText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
 
-      const schedulesByTrip = {};
-      timeRows.forEach(row => {
-        if (!schedulesByTrip[row.trip_id]) schedulesByTrip[row.trip_id] = [];
-        schedulesByTrip[row.trip_id].push({ stop_id: row.stop_id, time: row.time });
-      });
-
-      for (const tripId in schedulesByTrip) {
-        const marker = new google.maps.Marker({ map: map, icon: getRotatedIconConfig(0, tripId), visible: false });
-        const displayTripId = tripId.includes('*') ? tripId.replace('*', '') + ' (区間便)' : tripId;
-        const infoWindow = new google.maps.InfoWindow({
-          content: `<div style="padding: 5px; font-size: 16px; font-weight: bold; text-align: center;">便名: ${displayTripId}</div>`
+        const schedulesByTrip = {};
+        timeRows.forEach(row => {
+          if (!schedulesByTrip[row.trip_id]) schedulesByTrip[row.trip_id] = [];
+          schedulesByTrip[row.trip_id].push({ stop_id: row.stop_id, time: row.time });
         });
-        marker.addListener("click", () => infoWindow.open(map, marker));
-        systemData[routeId].trips.push({ tripId: tripId, schedule: schedulesByTrip[tripId], marker: marker });
+
+        for (const tripId in schedulesByTrip) {
+          const marker = new google.maps.Marker({ map: map, icon: getRotatedIconConfig(0, tripId), visible: false });
+          const displayTripId = tripId.includes('*') ? tripId.replace('*', '') + ' (区間便)' : tripId;
+          const infoWindow = new google.maps.InfoWindow({
+            content: `<div style="padding: 5px; font-size: 16px; font-weight: bold; text-align: center;">便名: ${displayTripId}</div>`
+          });
+          marker.addListener("click", () => infoWindow.open(map, marker));
+          systemData[routeId].trips.push({ tripId: tripId, schedule: schedulesByTrip[tripId], marker: marker });
+        }
       }
     }
 
@@ -352,6 +351,7 @@
       for (const routeId of routesToLoad) {
         const isVisible = document.getElementById(`chk-route-${routeId}`).checked;
         const data = systemData[routeId];
+        if(!data) continue;
         
         data.polyline.setVisible(isVisible);
 
@@ -395,26 +395,25 @@
                   segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse(); 
                 }
 
-                // ★NEW: 路線ごとの独立したスキップルール
+                // ★NEW: ご指定のベース設定(101)と、IDプレフィックスを用いた完全対応版(102)
                 const allSkipRules = {
                   "101": [
                     { start: "kanoya", end: "kotobuki", removeIds: ["shin_star_1", "shin31", "shin32", "shin33", "shin34", "shin35", "shiyakusho", "26", "27", "28", "shin_star_2"] },
                     { start: "osaki", end: "oshigiri", removeIds: ["40", "41", "asuparu", "42"] }
                   ],
                   "102": [
-                    // 平原経由/非経由
-                    { start: "shiyakusho", end: "kawanishi", removeIds: ["9135","9136","9137","9138","9139","9140","9141","9142","9143","hirabaru","9144","9145","9146"] },
-                    { start: "shiyakusho", end: "hirabaru", removeIds: ["135", "136"] },
-                    { start: "hirabaru", end: "kawanishi", removeIds: ["135", "136"] },
-                    // 吾平/論地橋
-                    { start: "myoshu", end: "aira", removeIds: ["9158","9159","9160","ronjibashi","9161","9162","9163","9164","9165","9166","9167"] },
-                    { start: "aira", end: "koyama", removeIds: ["9158","9159","9160","ronjibashi","9161","9162","9163","9164","9165","9166","9167"] },
-                    { start: "myoshu", end: "ronjibashi", removeIds: ["158","159","160","161","162","163","164","165","166","167","168","169","aira","170","171","172","173","174","175","176","177","178","179","180","181","182","183","184","185","186","187","188"] },
-                    { start: "ronjibashi", end: "sakashita", removeIds: ["158","159","160","161","162","163","164","165","166","167","168","169","aira","170","171","172","173","174","175","176","177","178","179","180","181","182","183","184","185","186","187","188"] },
-                    { start: "ronjibashi", end: "koyama", removeIds: ["158","159","160","161","162","163","164","165","166","167","168","169","aira","170","171","172","173","174","175","176","177","178","179","180","181","182","183","184","185","186","187","188"] },
-                    // 内之浦/志布志
-                    { start: "koyama", end: "ariakebashi", removeIds: ["201","202","203","204","205","206","207","208","209","210","211","212","213","214","215","216","217","218","219","220","221","222","223","224","225","226","227","228","229","230","231","232","233","shimobaru","eiwa","higashikushira","osaki","oshigiri","chigomatsu","shibushi_hs","shibushi_eki_ue","shibushi_eki_mae","shibushi","shibushi_port_ent","shibushi_port"] },
-                    { start: "koyama", end: "shimobaru", removeIds: ["ariakebashi","300","301","302","303","304","305","306","307","308","309","310","kaizo","400","401","402","403","404","405","406","407","408","uchinoura"] }
+                    { start: "furue", end: "taiikudai", removeIds: ["a26","a27","a28","a29","a30","a31","a32","a33","a34","a35","a36","a37","a38","a39","a40","arahira","a41","a42","a43","a44","a45","a46","a47","a48","a49","a50","a51","a52","a53","a54","a55","a56","a57","a58","a59","a60","a61","a62","a63","a64","a65","a66","a67","a68","a69","a70","a71","a72","a73","a74","a75","a76","takasu","a77","a78","a79","a80","a81","a82","a83","a84","a85","a86","a87","a88","a89","a90","a91","a92","a93","a94","a95","a96","a97","a98","a99","a100","a101","okamura","a102","a103","a104","a105","a106","a107"] },
+                    { start: "taiikudai", end: "kokutai", removeIds: ["a26","a27","a28","a29","a30","a31","a32","a33","a34","a35","a36","a37","a38","a39","a40","arahira","a41","a42","a43","a44","a45","a46","a47","a48","a49","a50","a51","a52","a53","a54","a55","a56","a57","a58","a59","a60","a61","a62","a63","a64","a65","a66","a67","a68","a69","a70","a71","a72","a73","a74","a75","a76","takasu","a77","a78","a79","a80","a81","a82","a83","a84","a85","a86","a87","a88","a89","a90","a91","a92","a93","a94","a95","a96","a97","a98","a99","a100","a101","okamura","a102","a103","a104","a105","a106","a107"] },
+                    { start: "furue", end: "kokutai", removeIds: ["t9","t10","t11","t12","t13","taiikudai","takasu","a77","a78","a79"] },
+                    { start: "shiyakusho", end: "kawanishi", removeIds: ["h9135","h9136","h9137","h9138","h9139","h9140","h9141","h9142","h9143","hirabaru","h9144","h9145","h9146"] },
+                    { start: "shiyakusho", end: "hirabaru", removeIds: ["h135","h136"] },
+                    { start: "hirabaru", end: "kawanishi", removeIds: ["h135","h136"] },
+                    { start: "myoshu", end: "aira", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
+                    { start: "aira", end: "sakashita", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
+                    { start: "myoshu", end: "ronjibashi", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
+                    { start: "ronjibashi", end: "sakashita", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
+                    { start: "koyama", end: "ariakebashi", removeIds: ["s500","s501","s502","s503","s504","s505","s506","s507","s508","s509","s510","s511","s512","s513","shimobaru","s514","s515","s516","s517","s518","s519","s520","s521","eiwa","s522","higashikushira","s523","s524","s525","s526","osaki","s527","s528","s532","s533","s534","oshigiri","s535","s536","chigomatsu","shibushi_hs","s537","shibushi_eki_ue","s538","shibushi_eki_mae","s539","shibushi","s540","s541","shibushi_port_ent","s542","s543","s544","s545","s546","shibushi_port"] },
+                    { start: "koyama", end: "shimobaru", removeIds: ["u201","u202","u203","u204","u205","u206","u207","u208","u209","u210","u211","u212","u213","u214","u215","u216","u217","u218","u219","u220","u221","u222","u223","u224","u225","u226","u227","u228","u229","u230","u231","u232","u233","ariakebashi","u300","u301","u302","u303","u304","u305","u306","u307","u308","u309","u310","kaizo","u400","u401","u402","u403","u404","u405","u406","u407","u408","uchinoura"] }
                   ]
                 };
 
@@ -441,6 +440,6 @@
     }
   </script>
   
-  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBqcUNb7-_olnNZKHR_UyfqB5Zi2KOI5X8&libraries=geometry&callback=initMap"></script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=geometry&callback=initMap"></script>
 </body>
 </html>
