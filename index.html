@@ -50,13 +50,13 @@
       </label>
     </div>
     <div id="manual-time-container">
-      <input type="range" id="time-slider" value="68400" min="68400" max="75600" oninput="updateSystem()">
+      <input type="range" id="time-slider" value="23400" min="21600" max="36000" oninput="updateSystem()">
       <div id="slider-settings-header" onclick="toggleSliderSettings()">
         <span>詳細設定</span><span id="slider-toggle-icon">▼</span>
       </div>
       <div id="slider-settings-content">
-        <div style="margin-bottom: 5px;">開始: <input type="time" id="slider-min-time" value="19:00" onchange="updateSliderBounds()"></div>
-        <div>終了: <input type="time" id="slider-max-time" value="21:00" onchange="updateSliderBounds()"></div>
+        <div style="margin-bottom: 5px;">開始: <input type="time" id="slider-min-time" value="06:00" onchange="updateSliderBounds()"></div>
+        <div>終了: <input type="time" id="slider-max-time" value="10:00" onchange="updateSliderBounds()"></div>
       </div>
     </div>
     <div id="settings-header" onclick="toggleSettings()">
@@ -74,27 +74,38 @@
     const systemData = {}; 
     let map;
 
-    // ★NEW: バスの画像を事前に読み込み、回転用キャッシュを準備
-    let isBusImageLoaded = false;
-    const busImage = new Image();
-    busImage.onload = () => { isBusImageLoaded = true; };
-    busImage.src = "bus.png"; 
-    const rotatedIconsCache = {};
+    // ★変更点1: BusAとBusBの両方を読み込んで別々に管理する
+    let isBusALoaded = false;
+    let isBusBLoaded = false;
+    
+    const busAImage = new Image();
+    busAImage.onload = () => { isBusALoaded = true; };
+    busAImage.src = "BusA.png"; // 通常便
+    
+    const busBImage = new Image();
+    busBImage.onload = () => { isBusBLoaded = true; };
+    busBImage.src = "BusB.png"; // 区間便
 
-    // ★NEW: 角度に応じた画像をCanvasで生成する関数
-    function getRotatedIconConfig(heading) {
-      if (!isBusImageLoaded) {
-        // 画像読み込み前は仮の設定を返す（横16、縦32）
-        return { url: "bus.png", scaledSize: new google.maps.Size(16, 32), anchor: new google.maps.Point(8, 16) };
+    const rotatedIconsCacheA = {};
+    const rotatedIconsCacheB = {};
+
+    // ★変更点2: tripIdの「*」を判定して、適切な画像を回転させる
+    function getRotatedIconConfig(heading, tripId) {
+      const isPartial = tripId.includes('*');
+      const cache = isPartial ? rotatedIconsCacheB : rotatedIconsCacheA;
+      const img = isPartial ? busBImage : busAImage;
+      const isLoaded = isPartial ? isBusBLoaded : isBusALoaded;
+      const defaultUrl = isPartial ? "BusB.png" : "BusA.png";
+
+      if (!isLoaded) {
+        return { url: defaultUrl, scaledSize: new google.maps.Size(16, 32), anchor: new google.maps.Point(8, 16) };
       }
       
       const angle = Math.round(heading) % 360;
       const normalizedAngle = angle < 0 ? angle + 360 : angle;
 
-      // まだ生成していない角度なら、Canvasで回転させて記憶（キャッシュ）する
-      if (!rotatedIconsCache[normalizedAngle]) {
+      if (!cache[normalizedAngle]) {
         const canvas = document.createElement("canvas");
-        // 回転しても見切れないように正方形(40x40)のキャンバスを用意
         const size = 40; 
         canvas.width = size;
         canvas.height = size;
@@ -102,15 +113,14 @@
         
         ctx.translate(size / 2, size / 2);
         ctx.rotate((normalizedAngle * Math.PI) / 180);
-        // キャンバスの中央に画像を配置（横16、縦32）
-        ctx.drawImage(busImage, -8, -16, 16, 32);
+        ctx.drawImage(img, -8, -16, 16, 32);
         
-        rotatedIconsCache[normalizedAngle] = {
+        cache[normalizedAngle] = {
           url: canvas.toDataURL(),
-          anchor: new google.maps.Point(size / 2, size / 2) // キャンバスの中心を地図上の座標に合わせる
+          anchor: new google.maps.Point(size / 2, size / 2)
         };
       }
-      return rotatedIconsCache[normalizedAngle];
+      return cache[normalizedAngle];
     }
 
     function toggleSettings() {
@@ -223,12 +233,14 @@
       for (const tripId in schedulesByTrip) {
         const marker = new google.maps.Marker({
           map: map,
-          icon: getRotatedIconConfig(0), // 初期状態のアイコン
+          icon: getRotatedIconConfig(0, tripId),
           visible: false
         });
 
+        // ★変更点3: タップしたときに「*」を綺麗に変換して表示する
+        const displayTripId = tripId.includes('*') ? tripId.replace('*', '') + ' (区間便)' : tripId;
         const infoWindow = new google.maps.InfoWindow({
-          content: `<div style="padding: 5px; font-size: 16px; font-weight: bold; text-align: center;">便名: ${tripId}</div>`
+          content: `<div style="padding: 5px; font-size: 16px; font-weight: bold; text-align: center;">便名: ${displayTripId}</div>`
         });
         marker.addListener("click", () => infoWindow.open(map, marker));
 
@@ -241,7 +253,6 @@
       return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
     }
 
-    // ★変更点: 現在地(pos)と、進行方向の角度(heading)の両方を計算して返すように改良
     function getPosAndHeadingAlongPath(path, fraction) {
       let total = 0, dists = [];
       for (let i = 0; i < path.length - 1; i++) {
@@ -259,7 +270,6 @@
         }
         curr += dists[i];
       }
-      // 終点付近の場合の処理
       return { 
         pos: path[path.length - 1], 
         heading: path.length > 1 ? google.maps.geometry.spherical.computeHeading(path[path.length - 2], path[path.length - 1]) : 0 
@@ -302,11 +312,9 @@
           }
           trip.marker.setVisible(true);
 
-          // 待機中のバスの向きは、出発直後の向き（または到着直前の向き）に設定
           if (currentSeconds <= firstTime) { 
             trip.marker.setPosition(data.stops[sch[0].stop_id]); 
-            // 始発停留所での待機中は真北(0度)を向かせておく
-            trip.marker.setIcon(getRotatedIconConfig(0));
+            trip.marker.setIcon(getRotatedIconConfig(0, trip.tripId));
             return; 
           }
           if (currentSeconds >= lastTime) { 
@@ -349,10 +357,10 @@
 
               const pathLatLng = segmentPath.map(p => new google.maps.LatLng(p.lat, p.lng));
               
-              // ★変更点: 現在地(pos)と角度(heading)を取得し、アイコンをリアルタイムに更新
               const currentData = getPosAndHeadingAlongPath(pathLatLng, fraction);
               trip.marker.setPosition(currentData.pos);
-              trip.marker.setIcon(getRotatedIconConfig(currentData.heading));
+              // ★変更点4: アイコン生成時にtripIdも渡して、画像を出し分ける
+              trip.marker.setIcon(getRotatedIconConfig(currentData.heading, trip.tripId));
               
               break;
             }
