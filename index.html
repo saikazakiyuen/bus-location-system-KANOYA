@@ -17,7 +17,6 @@
     
     #time-display { font-size: 18px; font-weight: bold; }
     
-    /* ★変更点: 初期状態から表示（block）にする */
     #manual-time-container {
       display: block; margin-top: 10px; padding: 10px; background: #e6f2ff; border-radius: 5px;
     }
@@ -47,18 +46,18 @@
     <div id="time-display">現在時刻: --:--:--</div>
     <div style="margin-top: 10px;">
       <label style="cursor: pointer; font-weight: bold; font-size: 15px; color: #0066cc;">
-        <!-- ★変更点: checked を追加して最初からONにする -->
         <input type="checkbox" id="manual-time-toggle" checked onchange="toggleManualTime()"> 時間指定モード
       </label>
     </div>
     <div id="manual-time-container">
-      <input type="range" id="time-slider" value="23400" min="21600" max="36000" oninput="updateSystem()">
+      <input type="range" id="time-slider" value="21600" min="21600" max="79200" oninput="updateSystem()">
       <div id="slider-settings-header" onclick="toggleSliderSettings()">
         <span>詳細設定</span><span id="slider-toggle-icon">▼</span>
       </div>
       <div id="slider-settings-content">
+        <!-- 初期設定を全便カバーの 06:00〜22:00 に変更 -->
         <div style="margin-bottom: 5px;">開始: <input type="time" id="slider-min-time" value="06:00" onchange="updateSliderBounds()"></div>
-        <div>終了: <input type="time" id="slider-max-time" value="10:00" onchange="updateSliderBounds()"></div>
+        <div>終了: <input type="time" id="slider-max-time" value="22:00" onchange="updateSliderBounds()"></div>
       </div>
     </div>
     <div id="settings-header" onclick="toggleSettings()">
@@ -99,7 +98,6 @@
       const isLoaded = isPartial ? isBusBLoaded : isBusALoaded;
       const defaultUrl = isPartial ? "BusB.png" : "BusA.png";
 
-      // ★変更点: 画像がない場合は、エラーで止まらずに標準の青い丸ピンを返す
       if (!isLoaded) {
         return {
           path: google.maps.SymbolPath.CIRCLE,
