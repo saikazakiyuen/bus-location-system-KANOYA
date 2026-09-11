@@ -55,7 +55,6 @@
         <span>詳細設定</span><span id="slider-toggle-icon">▼</span>
       </div>
       <div id="slider-settings-content">
-        <!-- 初期設定を全便カバーの 06:00〜22:00 に変更 -->
         <div style="margin-bottom: 5px;">開始: <input type="time" id="slider-min-time" value="06:00" onchange="updateSliderBounds()"></div>
         <div>終了: <input type="time" id="slider-max-time" value="22:00" onchange="updateSliderBounds()"></div>
       </div>
@@ -217,7 +216,7 @@
               icon: {
                 path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: "#FF0000",
                 fillOpacity: 1, strokeWeight: 2, strokeColor: "#FFFFFF",
-                labelOrigin: new google.maps.Point(0, -18)
+                labelOrigin: new google.maps.Point(0, -4) // ★変更点：文字の距離を -18 から -4（約1/4）に短縮
               }
             });
           }
@@ -342,13 +341,14 @@
               let segmentPath = [];
               if (idxA !== undefined && idxB !== undefined) {
                 if (idxA < idxB) {
-                  segmentPath = data.allPathCoords.slice(idxA, idxB + 1);
+                  segmentPath = data.allPathCoords.slice(idxA, idxB + 1); // 往路
                 } else {
-                  segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse();
+                  segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse(); // 復路
                 }
 
+                // ★変更点: 新ポイント対応の最新の迂回ルール
                 const skipRules = [
-                  { start: "kanoya", end: "kotobuki", removeIds: ["shiyakusho", "26", "27", "28"] },
+                  { start: "kanoya", end: "kotobuki", removeIds: ["shin_star_1", "shin31", "shin32", "shin33", "shin34", "shin35", "shiyakusho", "26", "27", "28", "shin_star_2"] },
                   { start: "osaki", end: "oshigiri", removeIds: ["40", "41", "asuparu", "42", "43"] }
                 ];
 
