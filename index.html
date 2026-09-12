@@ -15,7 +15,9 @@
       width: 260px;
     }
     
-    #time-display { font-size: 18px; font-weight: bold; }
+    #time-display { font-size: 18px; font-weight: bold; cursor: pointer; }
+    
+    #panel-content { display: block; margin-top: 10px; }
     
     #manual-time-container {
       display: block; margin-top: 10px; padding: 10px; background: #e6f2ff; border-radius: 5px;
@@ -58,39 +60,43 @@
 </head>
 <body>
   <div id="ui-panel">
-    <div id="time-display">現在時刻: --:--:--</div>
-    <div style="margin-top: 10px;">
-      <label style="cursor: pointer; font-weight: bold; font-size: 15px; color: #0066cc;">
-        <input type="checkbox" id="manual-time-toggle" checked onchange="toggleManualTime()"> 時間指定モード
-      </label>
-    </div>
+    <div id="time-display" onclick="togglePanel()">現在時刻: --:--:-- ▼</div>
     
-    <div id="manual-time-container">
-      <input type="range" id="time-slider" value="21600" min="21600" max="79200" oninput="onSliderDrag()">
+    <div id="panel-content">
+      <div style="margin-top: 10px;">
+        <label style="cursor: pointer; font-weight: bold; font-size: 15px; color: #0066cc;">
+          <input type="checkbox" id="manual-time-toggle" checked onchange="toggleManualTime()"> 時間指定モード
+        </label>
+      </div>
       
-      <div id="slider-settings-header" onclick="toggleSliderSettings()">
-        <span>⏳ 再生・詳細設定</span><span id="slider-toggle-icon">▼</span>
-      </div>
-      <div id="slider-settings-content">
-        <button id="play-btn" onclick="toggleAutoPlay()">▶ 自動進行をスタート</button>
-        <div style="margin-bottom: 8px;">
-          <strong>進行速度:</strong><br>
-          <label><input type="radio" name="play-speed" value="30" checked> 1時間を 30秒</label><br>
-          <label><input type="radio" name="play-speed" value="10"> 1時間を 10秒</label><br>
-          <label><input type="radio" name="play-speed" value="custom"> 1時間を <input type="number" id="custom-speed" value="5" min="1" style="width: 45px; padding: 2px;"> 秒</label>
+      <div id="manual-time-container">
+        <input type="range" id="time-slider" value="21600" min="21600" max="79200" oninput="onSliderDrag()">
+        
+        <div id="slider-settings-header" onclick="toggleSliderSettings()">
+          <span>⏳ 再生・詳細設定</span><span id="slider-toggle-icon">▼</span>
         </div>
-        <hr style="border: 0; border-top: 1px dashed #ccc; margin: 8px 0;">
-        <div style="margin-bottom: 5px;">開始: <input type="time" id="slider-min-time" value="06:00" onchange="updateSliderBounds()"></div>
-        <div>終了: <input type="time" id="slider-max-time" value="22:00" onchange="updateSliderBounds()"></div>
+        <div id="slider-settings-content">
+          <button id="play-btn" onclick="toggleAutoPlay()">▶ 自動進行をスタート</button>
+          <div style="margin-bottom: 8px;">
+            <strong>進行速度:</strong><br>
+            <label><input type="radio" name="play-speed" value="30" checked> 1時間を 30秒</label><br>
+            <label><input type="radio" name="play-speed" value="10"> 1時間を 10秒</label><br>
+            <label><input type="radio" name="play-speed" value="custom"> 1時間を <input type="number" id="custom-speed" value="5" min="1" style="width: 45px; padding: 2px;"> 秒</label>
+          </div>
+          <hr style="border: 0; border-top: 1px dashed #ccc; margin: 8px 0;">
+          <div style="margin-bottom: 5px;">開始: <input type="time" id="slider-min-time" value="06:00" onchange="updateSliderBounds()"></div>
+          <div>終了: <input type="time" id="slider-max-time" value="22:00" onchange="updateSliderBounds()"></div>
+        </div>
       </div>
-    </div>
-    
-    <div id="settings-header" onclick="toggleSettings()">
-      <span>⚙️ 路線表示設定</span><span id="toggle-icon">▼</span>
-    </div>
-    <div id="settings-content">
-      <label class="route-toggle"><input type="checkbox" id="chk-route-101" checked onchange="updateSystem()"> 系統101 (垂水〜志布志)</label>
-      <label class="route-toggle"><input type="checkbox" id="chk-route-102" checked onchange="updateSystem()"> 系統102 (鹿屋〜高山・内之浦)</label>
+      
+      <div id="settings-header" onclick="toggleSettings()">
+        <span>⚙️ 路線表示設定</span><span id="toggle-icon">▼</span>
+      </div>
+      <div id="settings-content">
+        <label class="route-toggle"><input type="checkbox" id="chk-route-101" checked onchange="updateSystem()"> 系統101 (垂水〜志布志)</label>
+        <label class="route-toggle"><input type="checkbox" id="chk-route-102" checked onchange="updateSystem()"> 系統102 (鹿屋〜高山・内之浦)</label>
+        <label class="route-toggle"><input type="checkbox" id="chk-labels" checked onchange="toggleLabels()"> 停留所名を表示</label>
+      </div>
     </div>
   </div>
   
@@ -211,6 +217,32 @@
       icon.innerText = content.style.display === "block" ? "▲" : "▼";
     }
 
+    function togglePanel() {
+      const content = document.getElementById("panel-content");
+      const display = document.getElementById("time-display");
+      if (content.style.display === "none") {
+        content.style.display = "block";
+        display.innerText = display.innerText.replace("▲", "▼");
+      } else {
+        content.style.display = "none";
+        display.innerText = display.innerText.replace("▼", "▲");
+      }
+    }
+
+    function toggleLabels() {
+      const isVisible = document.getElementById("chk-labels").checked;
+      for (const routeId in systemData) {
+        systemData[routeId].stopMarkers.forEach(marker => {
+          const icon = marker.getIcon();
+          if (isVisible) {
+            marker.setLabel({ text: marker.title, className: "stop-label" });
+          } else {
+            marker.setLabel(null);
+          }
+        });
+      }
+    }
+
     function updateSliderBounds() {
       const minStr = document.getElementById("slider-min-time").value;
       const maxStr = document.getElementById("slider-max-time").value;
@@ -237,7 +269,7 @@
     }
 
     async function loadRouteData(routeId) {
-      systemData[routeId] = { stops: {}, stopIndices: {}, allPathCoords: [], pathSegments: [], polylines: [], trips: [] };
+      systemData[routeId] = { stops: {}, stopIndices: {}, allPathCoords: [], pathSegments: [], polylines: [], trips: [], stopMarkers: [] };
 
       const displayStopsMap = new Map();
       try {
@@ -262,7 +294,6 @@
         
         if (currentSegment.length > 0) {
             const prevPos = currentSegment[currentSegment.length - 1];
-            // ★NEW: 異常な直線を引かせない「切断」の厳格なルール
             if ((prevPos.id === 'uchinoura' && pos.id === 's500') ||
                 (prevPos.id === '136' && pos.id === 'h9135') ||
                 (prevPos.id === 'm188' && pos.id === 'm9158')) { 
@@ -280,7 +311,7 @@
           
           if (displayStopsMap.size === 0 || displayStopsMap.has(row.id)) {
             const displayName = displayStopsMap.get(row.id) || row.id;
-            new google.maps.Marker({ 
+            const marker = new google.maps.Marker({ 
               position: pos, map: map, title: displayName,
               label: { text: displayName, className: "stop-label" },
               icon: {
@@ -289,6 +320,7 @@
                 labelOrigin: new google.maps.Point(0, -8)
               }
             });
+            systemData[routeId].stopMarkers.push(marker);
           }
         }
       });
@@ -297,7 +329,6 @@
           systemData[routeId].pathSegments.push(currentSegment);
       }
 
-      // ★NEW: 正しい分岐のための「接続（追加描画）」ルール
       if (routeId === "102") {
           const connectPairs = [
               ["134", "h9135"],
@@ -332,9 +363,8 @@
 
         for (const tripId in schedulesByTrip) {
           const marker = new google.maps.Marker({ map: map, icon: getRotatedIconConfig(0, tripId), visible: false });
-          const displayTripId = tripId.includes('*') ? tripId.replace('*', '') + ' (区間便)' : tripId;
           const infoWindow = new google.maps.InfoWindow({
-            content: `<div style="padding: 5px; font-size: 16px; font-weight: bold; text-align: center;">便名: ${displayTripId}</div>`
+            content: `<div style="padding: 5px; font-size: 16px; font-weight: bold; text-align: center;">便名: ${tripId}</div>`
           });
           marker.addListener("click", () => infoWindow.open(map, marker));
           systemData[routeId].trips.push({ tripId: tripId, schedule: schedulesByTrip[tripId], marker: marker });
@@ -379,11 +409,23 @@
         const h = Math.floor(currentSeconds / 3600);
         const m = Math.floor((currentSeconds % 3600) / 60);
         const s = currentSeconds % 60;
-        document.getElementById("time-display").innerText = `指定時刻: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        let displayStr = `指定時刻: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        if (document.getElementById("panel-content").style.display === "none") {
+            displayStr += " ▲";
+        } else {
+            displayStr += " ▼";
+        }
+        document.getElementById("time-display").innerText = displayStr;
         document.getElementById("time-display").style.color = "#0066cc";
       } else {
         const now = new Date();
-        document.getElementById("time-display").innerText = "現在時刻: " + now.toLocaleTimeString();
+        let displayStr = "現在時刻: " + now.toLocaleTimeString();
+        if (document.getElementById("panel-content").style.display === "none") {
+            displayStr += " ▲";
+        } else {
+            displayStr += " ▼";
+        }
+        document.getElementById("time-display").innerText = displayStr;
         document.getElementById("time-display").style.color = "black";
         currentSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
       }
@@ -435,7 +477,6 @@
                   segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse(); 
                 }
 
-                // ★NEW: 系統102用の厳密な排他(スキップ)ルール
                 const allSkipRules = {
                   "101": [
                     { start: "kanoya", end: "kotobuki", removeIds: ["shin_star_1", "shin31", "shin32", "shin33", "shin34", "shin35", "shiyakusho", "26", "27", "28", "shin_star_2"] },
@@ -486,6 +527,6 @@
     }
   </script>
   
-  <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=geometry&callback=initMap"></script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBqcUNb7-_olnNZKHR_UyfqB5Zi2KOI5X8&libraries=geometry&callback=initMap"></script>
 </body>
 </html>
