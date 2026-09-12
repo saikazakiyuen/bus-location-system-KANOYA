@@ -36,8 +36,6 @@
       align-items: center; border-top: 1px solid #ccc;
     }
     #settings-header { margin-top: 10px; padding-top: 10px; }
-    
-    /* ★NEW: 詳細設定アコーディオンのデザイン調整 */
     #slider-settings-header { 
       font-size: 14px; color: #333; padding: 8px 5px; background-color: #fff; 
       border: 1px solid #ccc; border-radius: 4px; margin-top: 5px;
@@ -70,7 +68,6 @@
     <div id="manual-time-container">
       <input type="range" id="time-slider" value="21600" min="21600" max="79200" oninput="onSliderDrag()">
       
-      <!-- ★NEW: 自動再生と設定を一つのアコーディオンにスッキリ収納 -->
       <div id="slider-settings-header" onclick="toggleSliderSettings()">
         <span>⏳ 再生・詳細設定</span><span id="slider-toggle-icon">▼</span>
       </div>
@@ -265,8 +262,10 @@
         
         if (currentSegment.length > 0) {
             const prevPos = currentSegment[currentSegment.length - 1];
-            // ★NEW: 距離ベースの切断をやめ、内之浦(uchinoura)から志布志方面(s500)の線を決め打ちで切断する
-            if (prevPos.id === 'uchinoura' && pos.id === 's500') { 
+            // ★NEW: 異常な直線を引かせない「切断」の厳格なルール
+            if ((prevPos.id === 'uchinoura' && pos.id === 's500') ||
+                (prevPos.id === '136' && pos.id === 'h9135') ||
+                (prevPos.id === 'm188' && pos.id === 'm9158')) { 
                 systemData[routeId].pathSegments.push(currentSegment);
                 currentSegment = [];
             }
@@ -287,7 +286,7 @@
               icon: {
                 path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: "#FF0000",
                 fillOpacity: 1, strokeWeight: 2, strokeColor: "#FFFFFF",
-                labelOrigin: new google.maps.Point(0, -8) // ★NEW: 距離を2倍（-4 から -8）に変更
+                labelOrigin: new google.maps.Point(0, -8)
               }
             });
           }
@@ -298,8 +297,22 @@
           systemData[routeId].pathSegments.push(currentSegment);
       }
 
+      // ★NEW: 正しい分岐のための「接続（追加描画）」ルール
+      if (routeId === "102") {
+          const connectPairs = [
+              ["134", "h9135"],
+              ["136", "137"],
+              ["myoshu", "m9158"],
+              ["m188", "189"]
+          ];
+          connectPairs.forEach(pair => {
+              const p1 = systemData[routeId].allPathCoords.find(p => p.id === pair[0]);
+              const p2 = systemData[routeId].allPathCoords.find(p => p.id === pair[1]);
+              if (p1 && p2) systemData[routeId].pathSegments.push([p1, p2]);
+          });
+      }
+
       const lineColor = routeId === "101" ? "#00AAFF" : "#FF6600";
-      
       systemData[routeId].pathSegments.forEach(seg => {
           systemData[routeId].polylines.push(new google.maps.Polyline({
               path: seg, geodesic: true, strokeColor: lineColor, strokeOpacity: 0.5, strokeWeight: 4, map: map
@@ -422,19 +435,29 @@
                   segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse(); 
                 }
 
+                // ★NEW: 系統102用の厳密な排他(スキップ)ルール
                 const allSkipRules = {
                   "101": [
                     { start: "kanoya", end: "kotobuki", removeIds: ["shin_star_1", "shin31", "shin32", "shin33", "shin34", "shin35", "shiyakusho", "26", "27", "28", "shin_star_2"] },
                     { start: "osaki", end: "oshigiri", removeIds: ["40", "41", "asuparu", "42"] }
                   ],
                   "102": [
+                    { start: "furue", end: "taiikudai", removeIds: ["a26","a27","a28","a29","a30","a31","a32","a33","a34","a35","a36","a37","a38","a39","a40","arahira","a41","a42","a43","a44","a45","a46","a47","a48","a49","a50","a51","a52","a53","a54","a55","a56","a57","a58","a59","a60","a61","a62","a63","a64","a65","a66","a67","a68","a69","a70","a71","a72","a73","a74","a75","a76","takasu","a77","a78","a79","a80","a81","a82","a83","a84","a85","a86","a87","a88","a89","a90","a91","a92","a93","a94","a95","a96","a97","a98","a99","a100","a101","okamura","a102","a103","a104","a105","a106","a107"] },
+                    { start: "taiikudai", end: "kokutai", removeIds: ["a26","a27","a28","a29","a30","a31","a32","a33","a34","a35","a36","a37","a38","a39","a40","arahira","a41","a42","a43","a44","a45","a46","a47","a48","a49","a50","a51","a52","a53","a54","a55","a56","a57","a58","a59","a60","a61","a62","a63","a64","a65","a66","a67","a68","a69","a70","a71","a72","a73","a74","a75","a76","takasu","a77","a78","a79","a80","a81","a82","a83","a84","a85","a86","a87","a88","a89","a90","a91","a92","a93","a94","a95","a96","a97","a98","a99","a100","a101","okamura","a102","a103","a104","a105","a106","a107"] },
+                    { start: "furue", end: "kokutai", removeIds: ["t9","t10","t11","t12","t13","taiikudai","takasu","a77","a78","a79"] },
+                    
                     { start: "shiyakusho", end: "kawanishi", removeIds: ["h9135","h9136","h9137","h9138","h9139","h9140","h9141","h9142","h9143","hirabaru","h9144","h9145","h9146"] },
                     { start: "shiyakusho", end: "hirabaru", removeIds: ["135", "136"] },
                     { start: "hirabaru", end: "kawanishi", removeIds: ["135", "136"] },
+                    
                     { start: "myoshu", end: "aira", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
+                    { start: "aira", end: "koyama", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
                     { start: "aira", end: "sakashita", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
+                    
                     { start: "myoshu", end: "ronjibashi", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
                     { start: "ronjibashi", end: "sakashita", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
+                    { start: "ronjibashi", end: "koyama", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
+                    
                     { start: "koyama", end: "ariakebashi", removeIds: ["s500","s501","s502","s503","s504","s505","s506","s507","s508","s509","s510","s511","s512","s513","shimobaru","s514","s515","s516","s517","s518","s519","s520","s521","eiwa","s522","higashikushira","s523","s524","s525","s526","osaki","s527","s528","s532","s533","s534","oshigiri","s535","s536","chigomatsu","shibushi_hs","s537","shibushi_eki_ue","s538","shibushi_eki_mae","s539","shibushi","s540","s541","shibushi_port_ent","s542","s543","s544","s545","s546","shibushi_port"] },
                     { start: "koyama", end: "shimobaru", removeIds: ["u201","u202","u203","u204","u205","u206","u207","u208","u209","u210","u211","u212","u213","u214","u215","u216","u217","u218","u219","u220","u221","u222","u223","u224","u225","u226","u227","u228","u229","u230","u231","u232","u233","ariakebashi","u300","u301","u302","u303","u304","u305","u306","u307","u308","u309","u310","kaizo","u400","u401","u402","u403","u404","u405","u406","u407","u408","uchinoura"] }
                   ]
@@ -463,6 +486,6 @@
     }
   </script>
   
-  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBqcUNb7-_olnNZKHR_UyfqB5Zi2KOI5X8&libraries=geometry&callback=initMap"></script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=geometry&callback=initMap"></script>
 </body>
 </html>
