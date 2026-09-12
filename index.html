@@ -36,10 +36,18 @@
       align-items: center; border-top: 1px solid #ccc;
     }
     #settings-header { margin-top: 10px; padding-top: 10px; }
-    #slider-settings-header { font-size: 13px; color: #555; padding-top: 5px; border-top: 1px dashed #aaa; margin-top: 10px; }
     
-    #settings-content, #slider-settings-content { display: none; margin-top: 10px; }
-    #slider-settings-content { font-size: 13px; }
+    /* ★NEW: 詳細設定アコーディオンのデザイン調整 */
+    #slider-settings-header { 
+      font-size: 14px; color: #333; padding: 8px 5px; background-color: #fff; 
+      border: 1px solid #ccc; border-radius: 4px; margin-top: 5px;
+    }
+    #slider-settings-content { 
+      display: none; font-size: 13px; background: #fff; padding: 10px; 
+      border: 1px solid #ccc; border-top: none; border-radius: 0 0 4px 4px; 
+    }
+    
+    #settings-content { display: none; margin-top: 10px; }
     .route-toggle { font-size: 16px; margin-top: 10px; display: block; cursor: pointer; }
     
     .stop-label {
@@ -62,20 +70,19 @@
     <div id="manual-time-container">
       <input type="range" id="time-slider" value="21600" min="21600" max="79200" oninput="onSliderDrag()">
       
-      <div style="margin-top: 5px; padding: 10px; background: #fff; border-radius: 4px; border: 1px solid #ccc;">
+      <!-- ★NEW: 自動再生と設定を一つのアコーディオンにスッキリ収納 -->
+      <div id="slider-settings-header" onclick="toggleSliderSettings()">
+        <span>⏳ 再生・詳細設定</span><span id="slider-toggle-icon">▼</span>
+      </div>
+      <div id="slider-settings-content">
         <button id="play-btn" onclick="toggleAutoPlay()">▶ 自動進行をスタート</button>
-        <div style="font-size: 13px; line-height: 1.6;">
+        <div style="margin-bottom: 8px;">
           <strong>進行速度:</strong><br>
           <label><input type="radio" name="play-speed" value="30" checked> 1時間を 30秒</label><br>
           <label><input type="radio" name="play-speed" value="10"> 1時間を 10秒</label><br>
           <label><input type="radio" name="play-speed" value="custom"> 1時間を <input type="number" id="custom-speed" value="5" min="1" style="width: 45px; padding: 2px;"> 秒</label>
         </div>
-      </div>
-
-      <div id="slider-settings-header" onclick="toggleSliderSettings()">
-        <span>詳細設定</span><span id="slider-toggle-icon">▼</span>
-      </div>
-      <div id="slider-settings-content">
+        <hr style="border: 0; border-top: 1px dashed #ccc; margin: 8px 0;">
         <div style="margin-bottom: 5px;">開始: <input type="time" id="slider-min-time" value="06:00" onchange="updateSliderBounds()"></div>
         <div>終了: <input type="time" id="slider-max-time" value="22:00" onchange="updateSliderBounds()"></div>
       </div>
@@ -233,7 +240,6 @@
     }
 
     async function loadRouteData(routeId) {
-      // ★NEW: ポリラインを複数持てるように pathSegments と polylines を追加
       systemData[routeId] = { stops: {}, stopIndices: {}, allPathCoords: [], pathSegments: [], polylines: [], trips: [] };
 
       const displayStopsMap = new Map();
@@ -257,14 +263,10 @@
       routeRows.forEach(row => {
         const pos = { id: row.id, lat: parseFloat(row.lat), lng: parseFloat(row.lng) };
         
-        // ★NEW: 内之浦や志布志などの分岐でワープ線が引かれないように、距離が1.5km以上離れていたら線を区切る
         if (currentSegment.length > 0) {
             const prevPos = currentSegment[currentSegment.length - 1];
-            const dist = google.maps.geometry.spherical.computeDistanceBetween(
-                new google.maps.LatLng(prevPos.lat, prevPos.lng), 
-                new google.maps.LatLng(pos.lat, pos.lng)
-            );
-            if (dist > 1500) { 
+            // ★NEW: 距離ベースの切断をやめ、内之浦(uchinoura)から志布志方面(s500)の線を決め打ちで切断する
+            if (prevPos.id === 'uchinoura' && pos.id === 's500') { 
                 systemData[routeId].pathSegments.push(currentSegment);
                 currentSegment = [];
             }
@@ -285,7 +287,7 @@
               icon: {
                 path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: "#FF0000",
                 fillOpacity: 1, strokeWeight: 2, strokeColor: "#FFFFFF",
-                labelOrigin: new google.maps.Point(0, -4)
+                labelOrigin: new google.maps.Point(0, -8) // ★NEW: 距離を2倍（-4 から -8）に変更
               }
             });
           }
@@ -298,7 +300,6 @@
 
       const lineColor = routeId === "101" ? "#00AAFF" : "#FF6600";
       
-      // 区切られた線分ごとにPolylineを生成
       systemData[routeId].pathSegments.forEach(seg => {
           systemData[routeId].polylines.push(new google.maps.Polyline({
               path: seg, geodesic: true, strokeColor: lineColor, strokeOpacity: 0.5, strokeWeight: 4, map: map
@@ -379,7 +380,6 @@
         const data = systemData[routeId];
         if(!data) continue;
         
-        // 複数ポリラインの表示切り替え
         data.polylines.forEach(p => p.setVisible(isVisible));
 
         data.trips.forEach(trip => {
@@ -422,7 +422,6 @@
                   segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse(); 
                 }
 
-                // ★NEW: 修正版の完全スキップルール
                 const allSkipRules = {
                   "101": [
                     { start: "kanoya", end: "kotobuki", removeIds: ["shin_star_1", "shin31", "shin32", "shin33", "shin34", "shin35", "shiyakusho", "26", "27", "28", "shin_star_2"] },
@@ -436,7 +435,6 @@
                     { start: "aira", end: "sakashita", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
                     { start: "myoshu", end: "ronjibashi", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
                     { start: "ronjibashi", end: "sakashita", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
-                    // 内之浦と志布志の分断ルール
                     { start: "koyama", end: "ariakebashi", removeIds: ["s500","s501","s502","s503","s504","s505","s506","s507","s508","s509","s510","s511","s512","s513","shimobaru","s514","s515","s516","s517","s518","s519","s520","s521","eiwa","s522","higashikushira","s523","s524","s525","s526","osaki","s527","s528","s532","s533","s534","oshigiri","s535","s536","chigomatsu","shibushi_hs","s537","shibushi_eki_ue","s538","shibushi_eki_mae","s539","shibushi","s540","s541","shibushi_port_ent","s542","s543","s544","s545","s546","shibushi_port"] },
                     { start: "koyama", end: "shimobaru", removeIds: ["u201","u202","u203","u204","u205","u206","u207","u208","u209","u210","u211","u212","u213","u214","u215","u216","u217","u218","u219","u220","u221","u222","u223","u224","u225","u226","u227","u228","u229","u230","u231","u232","u233","ariakebashi","u300","u301","u302","u303","u304","u305","u306","u307","u308","u309","u310","kaizo","u400","u401","u402","u403","u404","u405","u406","u407","u408","uchinoura"] }
                   ]
