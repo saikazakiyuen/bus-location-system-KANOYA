@@ -5,18 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>大隅半島バスロケーションシステム</title>
   <style>
-    body, html { margin: 0; padding: 0; height: 100%; }
+    body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
     #map { width: 100%; height: 100%; }
     
     #ui-panel {
       position: absolute; bottom: 40px; left: 10px; z-index: 99;
-      background: rgba(255, 255, 255, 0.9); padding: 15px; border: 2px solid black;
+      background: rgba(255, 255, 255, 0.95); padding: 15px; border: 2px solid black;
       border-radius: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      width: 260px;
+      width: 280px;
     }
     
-    #time-display { font-size: 18px; font-weight: bold; cursor: pointer; }
-    
+    #time-display { font-size: 18px; font-weight: bold; cursor: pointer; color: #333; }
     #panel-content { display: block; margin-top: 10px; }
     
     #manual-time-container {
@@ -24,31 +23,34 @@
     }
     #time-slider { width: 100%; margin: 10px 0; cursor: pointer; }
     
+    /* 平日・休日切り替えトグル */
+    .day-type-switch {
+      display: flex; background: #ddd; border-radius: 4px; overflow: hidden; margin-bottom: 10px;
+    }
+    .day-type-switch label {
+      flex: 1; text-align: center; padding: 6px; cursor: pointer; font-weight: bold; font-size: 14px;
+      transition: background 0.3s, color 0.3s;
+    }
+    .day-type-switch input { display: none; }
+    .day-type-switch input:checked + span { background: #00AAFF; color: white; display: block; border-radius: 4px; }
+    .day-type-switch span { display: block; padding: 6px; border-radius: 4px; }
+    
     #play-btn { 
       width: 100%; padding: 8px; background-color: #00AAFF; color: white; 
       border: none; border-radius: 4px; font-weight: bold; cursor: pointer; 
       margin-bottom: 8px; transition: background 0.3s;
     }
-    #play-btn:hover { background-color: #0088cc; }
     #play-btn.playing { background-color: #ff4444; }
-    #play-btn.playing:hover { background-color: #cc0000; }
     
     #settings-header, #slider-settings-header {
       cursor: pointer; font-weight: bold; display: flex; justify-content: space-between;
-      align-items: center; border-top: 1px solid #ccc;
+      align-items: center; border-top: 1px solid #ccc; margin-top: 10px; padding-top: 10px;
     }
-    #settings-header { margin-top: 10px; padding-top: 10px; }
-    #slider-settings-header { 
-      font-size: 14px; color: #333; padding: 8px 5px; background-color: #fff; 
-      border: 1px solid #ccc; border-radius: 4px; margin-top: 5px;
-    }
-    #slider-settings-content { 
-      display: none; font-size: 13px; background: #fff; padding: 10px; 
-      border: 1px solid #ccc; border-top: none; border-radius: 0 0 4px 4px; 
-    }
+    #slider-settings-header { font-size: 14px; background-color: #fff; border: 1px solid #ccc; border-radius: 4px; margin-top: 5px; padding: 8px 5px;}
+    #slider-settings-content { display: none; font-size: 13px; background: #fff; padding: 10px; border: 1px solid #ccc; border-top: none; border-radius: 0 0 4px 4px; }
     
-    #settings-content { display: none; margin-top: 10px; }
-    .route-toggle { font-size: 16px; margin-top: 10px; display: block; cursor: pointer; }
+    #settings-content { display: none; margin-top: 10px; max-height: 200px; overflow-y: auto; }
+    .route-toggle { font-size: 14px; margin-top: 8px; display: block; cursor: pointer; }
     
     .stop-label {
       background-color: rgba(255, 255, 255, 0.9); border: 1px solid #555; border-radius: 4px;
@@ -57,21 +59,28 @@
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- ★NEW: 設定ファイルの読み込み -->
+  <script src="config.js"></script>
 </head>
 <body>
   <div id="ui-panel">
     <div id="time-display" onclick="togglePanel()">現在時刻: --:--:-- ▼</div>
     
     <div id="panel-content">
+      <!-- ★NEW: 平日・土休日切り替えスイッチ -->
+      <div class="day-type-switch">
+        <label><input type="radio" name="day-type" value="weekday" checked onchange="updateSystem()"><span>平日</span></label>
+        <label><input type="radio" name="day-type" value="holiday" onchange="updateSystem()"><span>土日祝</span></label>
+      </div>
+
       <div style="margin-top: 10px;">
-        <label style="cursor: pointer; font-weight: bold; font-size: 15px; color: #0066cc;">
+        <label style="cursor: pointer; font-weight: bold; font-size: 14px; color: #0066cc;">
           <input type="checkbox" id="manual-time-toggle" checked onchange="toggleManualTime()"> 時間指定モード
         </label>
       </div>
       
       <div id="manual-time-container">
         <input type="range" id="time-slider" value="21600" min="21600" max="79200" oninput="onSliderDrag()">
-        
         <div id="slider-settings-header" onclick="toggleSliderSettings()">
           <span>⏳ 再生・詳細設定</span><span id="slider-toggle-icon">▼</span>
         </div>
@@ -80,10 +89,8 @@
           <div style="margin-bottom: 8px;">
             <strong>進行速度:</strong><br>
             <label><input type="radio" name="play-speed" value="30" checked> 1時間を 30秒</label><br>
-            <label><input type="radio" name="play-speed" value="10"> 1時間を 10秒</label><br>
-            <label><input type="radio" name="play-speed" value="custom"> 1時間を <input type="number" id="custom-speed" value="5" min="1" style="width: 45px; padding: 2px;"> 秒</label>
+            <label><input type="radio" name="play-speed" value="10"> 1時間を 10秒</label>
           </div>
-          <hr style="border: 0; border-top: 1px dashed #ccc; margin: 8px 0;">
           <div style="margin-bottom: 5px;">開始: <input type="time" id="slider-min-time" value="06:00" onchange="updateSliderBounds()"></div>
           <div>終了: <input type="time" id="slider-max-time" value="22:00" onchange="updateSliderBounds()"></div>
         </div>
@@ -92,10 +99,12 @@
       <div id="settings-header" onclick="toggleSettings()">
         <span>⚙️ 路線表示設定</span><span id="toggle-icon">▼</span>
       </div>
+      <!-- ★NEW: config.js から自動生成される路線リスト領域 -->
       <div id="settings-content">
-        <label class="route-toggle"><input type="checkbox" id="chk-route-101" checked onchange="updateSystem()"> 系統101 (垂水〜志布志)</label>
-        <label class="route-toggle"><input type="checkbox" id="chk-route-102" checked onchange="updateSystem()"> 系統102 (鹿屋〜高山・内之浦)</label>
-        <label class="route-toggle"><input type="checkbox" id="chk-labels" checked onchange="toggleLabels()"> 停留所名を表示</label>
+        <label class="route-toggle" style="border-bottom:1px dashed #ccc; padding-bottom:5px; margin-bottom:5px;">
+          <input type="checkbox" id="chk-labels" checked onchange="toggleLabels()"> 停留所名を表示
+        </label>
+        <div id="dynamic-route-list"></div>
       </div>
     </div>
   </div>
@@ -103,68 +112,56 @@
   <div id="map"></div>
 
   <script>
-    const routesToLoad = ["101", "102"]; 
     const systemData = {}; 
+    const masterSegments = {}; 
     let map;
 
     let isAutoPlaying = false;
     let autoPlayInterval = null;
     let floatCurrentTime = 21600;
 
-    let isBusALoaded = false;
-    let isBusBLoaded = false;
-    const busAImage = new Image();
-    busAImage.onload = () => { isBusALoaded = true; };
-    busAImage.src = "BusA.png"; 
-    const busBImage = new Image();
-    busBImage.onload = () => { isBusBLoaded = true; };
-    busBImage.src = "BusB.png"; 
+    const busImage = new Image();
+    let isBusLoaded = false;
+    busImage.onload = () => { isBusLoaded = true; };
+    busImage.src = "BusA.png"; // バスアイコン
 
-    const rotatedIconsCacheA = {};
-    const rotatedIconsCacheB = {};
+    const rotatedIconsCache = {};
 
-    function getRotatedIconConfig(heading, tripId) {
-      const isPartial = tripId.includes('*');
-      const cache = isPartial ? rotatedIconsCacheB : rotatedIconsCacheA;
-      const img = isPartial ? busBImage : busAImage;
-      const isLoaded = isPartial ? isBusBLoaded : isBusALoaded;
-
-      if (!isLoaded) {
-        return {
-          path: google.maps.SymbolPath.CIRCLE, scale: 6,
-          fillColor: isPartial ? "#00AAFF" : "#FF00AA",
-          fillOpacity: 1, strokeWeight: 2, strokeColor: "#FFFFFF"
-        };
+    function getRotatedIconConfig(heading, color) {
+      if (!isBusLoaded) {
+        return { path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: color, fillOpacity: 1, strokeWeight: 2, strokeColor: "#FFFFFF" };
       }
-      
       const angle = Math.round(heading) % 360;
       const normalizedAngle = angle < 0 ? angle + 360 : angle;
+      const cacheKey = `${normalizedAngle}_${color}`;
 
-      if (!cache[normalizedAngle]) {
+      if (!rotatedIconsCache[cacheKey]) {
         const canvas = document.createElement("canvas");
         const size = 40; 
         canvas.width = size; canvas.height = size;
         const ctx = canvas.getContext("2d");
         ctx.translate(size / 2, size / 2);
         ctx.rotate((normalizedAngle * Math.PI) / 180);
-        ctx.drawImage(img, -8, -16, 16, 32);
         
-        cache[normalizedAngle] = {
-          url: canvas.toDataURL(), anchor: new google.maps.Point(size / 2, size / 2)
-        };
+        // バス画像を色付きの円で囲むなどの装飾も可能
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(0, 0, 14, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        ctx.drawImage(busImage, -8, -16, 16, 32);
+        rotatedIconsCache[cacheKey] = { url: canvas.toDataURL(), anchor: new google.maps.Point(size / 2, size / 2) };
       }
-      return cache[normalizedAngle];
+      return rotatedIconsCache[cacheKey];
     }
 
     function toggleAutoPlay() {
       const btn = document.getElementById("play-btn");
       const slider = document.getElementById("time-slider");
       isAutoPlaying = !isAutoPlaying;
-      
       if (isAutoPlaying) {
         btn.innerText = "■ 自動進行を停止";
         btn.classList.add("playing");
-        if (parseInt(slider.value) >= parseInt(slider.max)) slider.value = slider.min;
         floatCurrentTime = parseFloat(slider.value);
         autoPlayInterval = setInterval(autoPlayStep, 100); 
       } else {
@@ -177,14 +174,8 @@
     function autoPlayStep() {
       let speedSec = 30;
       const radios = document.getElementsByName("play-speed");
-      for (let r of radios) {
-        if (r.checked) {
-          speedSec = r.value === "custom" ? (parseFloat(document.getElementById("custom-speed").value) || 1) : parseFloat(r.value);
-          break;
-        }
-      }
-      const delta = (3600 / speedSec) * 0.1; 
-      floatCurrentTime += delta;
+      for (let r of radios) { if (r.checked) { speedSec = parseFloat(r.value); break; } }
+      floatCurrentTime += (3600 / speedSec) * 0.1; 
       const slider = document.getElementById("time-slider");
       if (floatCurrentTime >= parseInt(slider.max)) {
         floatCurrentTime = parseInt(slider.max);
@@ -195,7 +186,6 @@
     }
 
     function onSliderDrag() { floatCurrentTime = parseFloat(document.getElementById("time-slider").value); updateSystem(); }
-
     function toggleManualTime() {
       const isManual = document.getElementById("manual-time-toggle").checked;
       document.getElementById("manual-time-container").style.display = isManual ? "block" : "none";
@@ -212,9 +202,7 @@
 
     function toggleSliderSettings() {
       const content = document.getElementById("slider-settings-content");
-      const icon = document.getElementById("slider-toggle-icon");
       content.style.display = content.style.display === "block" ? "none" : "block";
-      icon.innerText = content.style.display === "block" ? "▲" : "▼";
     }
 
     function togglePanel() {
@@ -232,149 +220,105 @@
     function toggleLabels() {
       const isVisible = document.getElementById("chk-labels").checked;
       for (const routeId in systemData) {
-        systemData[routeId].stopMarkers.forEach(marker => {
-          const icon = marker.getIcon();
-          if (isVisible) {
-            marker.setLabel({ text: marker.title, className: "stop-label" });
-          } else {
-            marker.setLabel(null);
-          }
-        });
+        systemData[routeId].stopMarkers.forEach(m => m.setLabel(isVisible ? { text: m.title, className: "stop-label" } : null));
       }
     }
 
     function updateSliderBounds() {
-      const minStr = document.getElementById("slider-min-time").value;
-      const maxStr = document.getElementById("slider-max-time").value;
-      if (minStr && maxStr) {
-        const minSec = timeToSeconds(minStr + ":00");
-        const maxSec = timeToSeconds(maxStr + ":00");
-        const slider = document.getElementById("time-slider");
-        slider.min = minSec; slider.max = maxSec;
-        if (parseInt(slider.value) < minSec) slider.value = minSec;
-        if (parseInt(slider.value) > maxSec) slider.value = maxSec;
-        floatCurrentTime = parseFloat(slider.value);
-        updateSystem();
-      }
+      const minSec = timeToSeconds(document.getElementById("slider-min-time").value + ":00");
+      const maxSec = timeToSeconds(document.getElementById("slider-max-time").value + ":00");
+      const slider = document.getElementById("time-slider");
+      slider.min = minSec; slider.max = maxSec;
+      updateSystem();
+    }
+
+    function timeToSeconds(timeStr) {
+      if(!timeStr) return 0;
+      const parts = timeStr.split(":");
+      return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2] || 0);
+    }
+
+    // UIの自動生成
+    function buildRouteUI() {
+      const container = document.getElementById("dynamic-route-list");
+      systemConfig.routes.forEach(route => {
+        const label = document.createElement("label");
+        label.className = "route-toggle";
+        label.innerHTML = `<input type="checkbox" id="chk-route-${route.id}" checked onchange="updateSystem()"> <span style="color:${route.color}">■</span> ${route.name}`;
+        container.appendChild(label);
+      });
     }
 
     async function initMap() {
+      buildRouteUI(); // UI生成
       map = new google.maps.Map(document.getElementById("map"), {
-        center: { lat: 31.404687, lng: 130.850184 },
-        zoom: 11, disableDefaultUI: true, zoomControl: true       
+        center: { lat: 31.404687, lng: 130.850184 }, zoom: 11, disableDefaultUI: true, zoomControl: true
       });
-      for (const routeId of routesToLoad) { await loadRouteData(routeId); }
+      await loadMasterSegments();
+      for (const route of systemConfig.routes) await loadRouteData(route);
       updateSliderBounds();
       setInterval(updateSystem, 1000);
     }
 
-    async function loadRouteData(routeId) {
-      systemData[routeId] = { stops: {}, stopIndices: {}, allPathCoords: [], pathSegments: [], polylines: [], trips: [], stopMarkers: [] };
-
-      const displayStopsMap = new Map();
+    async function loadMasterSegments() {
       try {
-        const resDisplay = await fetch(`display_stops_${routeId}.csv`);
-        if (resDisplay.ok) {
-          const displayText = await resDisplay.text();
-          const displayRows = Papa.parse(displayText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
-          displayRows.forEach(row => {
-            if (row.stop_id) displayStopsMap.set(row.stop_id, row.stop_name || row.stop_id);
-          });
-        }
-      } catch(e) {}
+        const res = await fetch(`master/segments.csv`);
+        const rows = Papa.parse(await res.text(), { header: true, skipEmptyLines: true }).data;
+        rows.forEach(r => {
+          if (!masterSegments[r.segment_id]) masterSegments[r.segment_id] = [];
+          masterSegments[r.segment_id].push({ lat: parseFloat(r.lat), lng: parseFloat(r.lng) });
+        });
+      } catch(e) { console.warn("マスターデータ読み込みエラー", e); }
+    }
 
-      const resRoute = await fetch(`route_${routeId}.csv`);
-      const routeText = await resRoute.text();
-      const routeRows = Papa.parse(routeText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
-
-      let currentSegment = [];
-
-      routeRows.forEach(row => {
-        const pos = { id: row.id, lat: parseFloat(row.lat), lng: parseFloat(row.lng) };
-        
-        if (currentSegment.length > 0) {
-            const prevPos = currentSegment[currentSegment.length - 1];
-            if ((prevPos.id === 'uchinoura' && pos.id === 's500') ||
-                (prevPos.id === '136' && pos.id === 'h9135') ||
-                (prevPos.id === 'm188' && pos.id === 'm9158')) { 
-                systemData[routeId].pathSegments.push(currentSegment);
-                currentSegment = [];
-            }
-        }
-        
-        currentSegment.push(pos);
-        systemData[routeId].allPathCoords.push(pos);
-
-        if (row.type === 'stop') {
-          systemData[routeId].stops[row.id] = pos;
-          systemData[routeId].stopIndices[row.id] = systemData[routeId].allPathCoords.length - 1;
-          
-          if (displayStopsMap.size === 0 || displayStopsMap.has(row.id)) {
-            const displayName = displayStopsMap.get(row.id) || row.id;
-            const marker = new google.maps.Marker({ 
-              position: pos, map: map, title: displayName,
-              label: { text: displayName, className: "stop-label" },
-              icon: {
-                path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: "#FF0000",
-                fillOpacity: 1, strokeWeight: 2, strokeColor: "#FFFFFF",
-                labelOrigin: new google.maps.Point(0, -8)
-              }
-            });
-            systemData[routeId].stopMarkers.push(marker);
-          }
-        }
-      });
+    async function loadRouteData(routeConfig) {
+      const routeId = routeConfig.id;
+      systemData[routeId] = { config: routeConfig, stops: {}, stopIndices: {}, allPathCoords: [], polylines: [], trips: [], stopMarkers: [] };
       
-      if (currentSegment.length > 0) {
-          systemData[routeId].pathSegments.push(currentSegment);
-      }
-
-      if (routeId === "102") {
-          const connectPairs = [
-              ["134", "h9135"],
-              ["136", "137"],
-              ["myoshu", "m9158"],
-              ["m188", "189"]
-          ];
-          connectPairs.forEach(pair => {
-              const p1 = systemData[routeId].allPathCoords.find(p => p.id === pair[0]);
-              const p2 = systemData[routeId].allPathCoords.find(p => p.id === pair[1]);
-              if (p1 && p2) systemData[routeId].pathSegments.push([p1, p2]);
+      try {
+        // ルート（形状）の読み込み
+        const resRoute = await fetch(`route/${routeId}.csv`);
+        const routeRows = Papa.parse(await resRoute.text(), { header: true, skipEmptyLines: true, transform: v => v.trim() }).data;
+        
+        let fullPath = [];
+        routeRows.forEach(row => {
+          const pos = { id: row.stop_id, lat: parseFloat(row.lat), lng: parseFloat(row.lng) };
+          fullPath.push(pos);
+          systemData[routeId].stops[row.stop_id] = pos;
+          systemData[routeId].stopIndices[row.stop_id] = fullPath.length - 1;
+          
+          const marker = new google.maps.Marker({
+            position: pos, map: map, title: row.stop_id, label: { text: row.stop_id, className: "stop-label" },
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 4, fillColor: "#FF0000", fillOpacity: 1, strokeWeight: 2, strokeColor: "#FFFFFF", labelOrigin: new google.maps.Point(0, -8) }
           });
-      }
+          systemData[routeId].stopMarkers.push(marker);
 
-      const lineColor = routeId === "101" ? "#00AAFF" : "#FF6600";
-      systemData[routeId].pathSegments.forEach(seg => {
-          systemData[routeId].polylines.push(new google.maps.Polyline({
-              path: seg, geodesic: true, strokeColor: lineColor, strokeOpacity: 0.5, strokeWeight: 4, map: map
-          }));
-      });
+          if (row.next_segment && masterSegments[row.next_segment]) {
+            masterSegments[row.next_segment].forEach(p => fullPath.push(p));
+          }
+        });
+        
+        systemData[routeId].allPathCoords = fullPath;
+        const polyline = new google.maps.Polyline({ path: fullPath, map: map, strokeColor: routeConfig.color, strokeOpacity: 0.5, strokeWeight: 4 });
+        systemData[routeId].polylines.push(polyline);
 
-      const resTime = await fetch(`timetable_${routeId}.csv`);
-      if (resTime.ok) {
-        const timeText = await resTime.text();
-        const timeRows = Papa.parse(timeText, { header: true, skipEmptyLines: true, transform: function(v){return v.trim();} }).data;
-
+        // 時刻表の読み込み（day_typeが含まれている）
+        const resTime = await fetch(`timetable/${routeId}.csv`);
+        const timeRows = Papa.parse(await resTime.text(), { header: true, skipEmptyLines: true, transform: v => v.trim() }).data;
+        
         const schedulesByTrip = {};
         timeRows.forEach(row => {
-          if (!schedulesByTrip[row.trip_id]) schedulesByTrip[row.trip_id] = [];
-          schedulesByTrip[row.trip_id].push({ stop_id: row.stop_id, time: row.time });
+          if (!schedulesByTrip[row.trip_id]) schedulesByTrip[row.trip_id] = { day_type: row.day_type || 'weekday', schedule: [] };
+          schedulesByTrip[row.trip_id].schedule.push({ stop_id: row.stop_id, time: row.time });
         });
 
         for (const tripId in schedulesByTrip) {
-          const marker = new google.maps.Marker({ map: map, icon: getRotatedIconConfig(0, tripId), visible: false });
-          const infoWindow = new google.maps.InfoWindow({
-            content: `<div style="padding: 5px; font-size: 16px; font-weight: bold; text-align: center;">便名: ${tripId}</div>`
-          });
+          const marker = new google.maps.Marker({ map: map, visible: false });
+          const infoWindow = new google.maps.InfoWindow({ content: `<div style="padding: 5px; font-size: 16px; font-weight: bold; text-align: center;">${tripId}</div>` });
           marker.addListener("click", () => infoWindow.open(map, marker));
-          systemData[routeId].trips.push({ tripId: tripId, schedule: schedulesByTrip[tripId], marker: marker });
+          systemData[routeId].trips.push({ tripId: tripId, dayType: schedulesByTrip[tripId].day_type, schedule: schedulesByTrip[tripId].schedule, marker: marker });
         }
-      }
-    }
-
-    function timeToSeconds(timeStr) {
-      const parts = timeStr.split(":");
-      return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
+      } catch(e) { console.warn(`ルート ${routeId} の読み込みをスキップしました`); }
     }
 
     function getPosAndHeadingAlongPath(path, fraction) {
@@ -388,20 +332,19 @@
       for (let i = 0; i < path.length - 1; i++) {
         if (curr + dists[i] >= target) {
           const segFraction = (target - curr) / dists[i];
-          const pos = google.maps.geometry.spherical.interpolate(path[i], path[i+1], segFraction);
-          const heading = google.maps.geometry.spherical.computeHeading(path[i], path[i+1]);
-          return { pos: pos, heading: heading };
+          return {
+            pos: google.maps.geometry.spherical.interpolate(path[i], path[i+1], segFraction),
+            heading: google.maps.geometry.spherical.computeHeading(path[i], path[i+1])
+          };
         }
         curr += dists[i];
       }
-      return { 
-        pos: path[path.length - 1], 
-        heading: path.length > 1 ? google.maps.geometry.spherical.computeHeading(path[path.length - 2], path[path.length - 1]) : 0 
-      };
+      return { pos: path[path.length - 1], heading: path.length > 1 ? google.maps.geometry.spherical.computeHeading(path[path.length - 2], path[path.length - 1]) : 0 };
     }
 
     function updateSystem() {
       const isManual = document.getElementById("manual-time-toggle").checked;
+      const currentDayType = document.querySelector('input[name="day-type"]:checked').value; // weekday or holiday
       let currentSeconds;
 
       if (isManual) {
@@ -409,38 +352,35 @@
         const h = Math.floor(currentSeconds / 3600);
         const m = Math.floor((currentSeconds % 3600) / 60);
         const s = currentSeconds % 60;
-        let displayStr = `指定時刻: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-        if (document.getElementById("panel-content").style.display === "none") {
-            displayStr += " ▲";
-        } else {
-            displayStr += " ▼";
-        }
-        document.getElementById("time-display").innerText = displayStr;
+        let ds = `指定時刻: ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        document.getElementById("time-display").innerText = ds + (document.getElementById("panel-content").style.display === "none" ? " ▲" : " ▼");
         document.getElementById("time-display").style.color = "#0066cc";
       } else {
         const now = new Date();
-        let displayStr = "現在時刻: " + now.toLocaleTimeString();
-        if (document.getElementById("panel-content").style.display === "none") {
-            displayStr += " ▲";
-        } else {
-            displayStr += " ▼";
-        }
-        document.getElementById("time-display").innerText = displayStr;
+        let ds = "現在時刻: " + now.toLocaleTimeString();
+        document.getElementById("time-display").innerText = ds + (document.getElementById("panel-content").style.display === "none" ? " ▲" : " ▼");
         document.getElementById("time-display").style.color = "black";
         currentSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
       }
 
-      for (const routeId of routesToLoad) {
-        const isVisible = document.getElementById(`chk-route-${routeId}`).checked;
+      for (const route of systemConfig.routes) {
+        const routeId = route.id;
         const data = systemData[routeId];
         if(!data) continue;
+        
+        const chk = document.getElementById(`chk-route-${routeId}`);
+        const isVisible = chk ? chk.checked : false;
         
         data.polylines.forEach(p => p.setVisible(isVisible));
 
         data.trips.forEach(trip => {
-          if (!isVisible) { trip.marker.setVisible(false); return; }
+          // 非表示、または曜日が一致しない場合はマーカーを消す（dailyは毎日運行とみなす）
+          if (!isVisible || (trip.dayType !== currentDayType && trip.dayType !== 'daily')) { 
+            trip.marker.setVisible(false); return; 
+          }
 
           const sch = trip.schedule;
+          if(!sch || sch.length === 0) return;
           const firstTime = timeToSeconds(sch[0].time);
           const lastTime = timeToSeconds(sch[sch.length - 1].time);
 
@@ -451,7 +391,7 @@
 
           if (currentSeconds <= firstTime) { 
             trip.marker.setPosition(data.stops[sch[0].stop_id]); 
-            trip.marker.setIcon(getRotatedIconConfig(0, trip.tripId));
+            trip.marker.setIcon(getRotatedIconConfig(0, route.color));
             return; 
           }
           if (currentSeconds >= lastTime) { 
@@ -462,55 +402,14 @@
           for (let i = 0; i < sch.length - 1; i++) {
             const timeA = timeToSeconds(sch[i].time);
             const timeB = timeToSeconds(sch[i+1].time);
-
             if (currentSeconds >= timeA && currentSeconds <= timeB) {
               const fraction = (currentSeconds - timeA) / (timeB - timeA);
-              
               const idxA = data.stopIndices[sch[i].stop_id];
               const idxB = data.stopIndices[sch[i+1].stop_id];
               
               let segmentPath = [];
               if (idxA !== undefined && idxB !== undefined) {
-                if (idxA < idxB) {
-                  segmentPath = data.allPathCoords.slice(idxA, idxB + 1); 
-                } else {
-                  segmentPath = data.allPathCoords.slice(idxB, idxA + 1).reverse(); 
-                }
-
-                const allSkipRules = {
-                  "101": [
-                    { start: "kanoya", end: "kotobuki", removeIds: ["shin_star_1", "shin31", "shin32", "shin33", "shin34", "shin35", "shiyakusho", "26", "27", "28", "shin_star_2"] },
-                    { start: "osaki", end: "oshigiri", removeIds: ["40", "41", "asuparu", "42"] }
-                  ],
-                  "102": [
-                    { start: "furue", end: "taiikudai", removeIds: ["a26","a27","a28","a29","a30","a31","a32","a33","a34","a35","a36","a37","a38","a39","a40","arahira","a41","a42","a43","a44","a45","a46","a47","a48","a49","a50","a51","a52","a53","a54","a55","a56","a57","a58","a59","a60","a61","a62","a63","a64","a65","a66","a67","a68","a69","a70","a71","a72","a73","a74","a75","a76","takasu","a77","a78","a79","a80","a81","a82","a83","a84","a85","a86","a87","a88","a89","a90","a91","a92","a93","a94","a95","a96","a97","a98","a99","a100","a101","okamura","a102","a103","a104","a105","a106","a107"] },
-                    { start: "taiikudai", end: "kokutai", removeIds: ["a26","a27","a28","a29","a30","a31","a32","a33","a34","a35","a36","a37","a38","a39","a40","arahira","a41","a42","a43","a44","a45","a46","a47","a48","a49","a50","a51","a52","a53","a54","a55","a56","a57","a58","a59","a60","a61","a62","a63","a64","a65","a66","a67","a68","a69","a70","a71","a72","a73","a74","a75","a76","takasu","a77","a78","a79","a80","a81","a82","a83","a84","a85","a86","a87","a88","a89","a90","a91","a92","a93","a94","a95","a96","a97","a98","a99","a100","a101","okamura","a102","a103","a104","a105","a106","a107"] },
-                    { start: "furue", end: "kokutai", removeIds: ["t9","t10","t11","t12","t13","taiikudai","takasu","a77","a78","a79"] },
-                    
-                    { start: "shiyakusho", end: "kawanishi", removeIds: ["h9135","h9136","h9137","h9138","h9139","h9140","h9141","h9142","h9143","hirabaru","h9144","h9145","h9146"] },
-                    { start: "shiyakusho", end: "hirabaru", removeIds: ["135", "136"] },
-                    { start: "hirabaru", end: "kawanishi", removeIds: ["135", "136"] },
-                    
-                    { start: "myoshu", end: "aira", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
-                    { start: "aira", end: "koyama", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
-                    { start: "aira", end: "sakashita", removeIds: ["m9158","m9159","m9160","ronjibashi","m9161","m9162","m9163","m9164","m9165","m9166","m9167"] },
-                    
-                    { start: "myoshu", end: "ronjibashi", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
-                    { start: "ronjibashi", end: "sakashita", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
-                    { start: "ronjibashi", end: "koyama", removeIds: ["m158","m159","m160","m161","m162","m163","m164","m165","m166","m167","m168","m169","aira","m170","m171","m172","m173","m174","m175","m176","m177","m178","m179","m180","m181","m182","m183","m184","m185","m186","m187","m188"] },
-                    
-                    { start: "koyama", end: "ariakebashi", removeIds: ["s500","s501","s502","s503","s504","s505","s506","s507","s508","s509","s510","s511","s512","s513","shimobaru","s514","s515","s516","s517","s518","s519","s520","s521","eiwa","s522","higashikushira","s523","s524","s525","s526","osaki","s527","s528","s532","s533","s534","oshigiri","s535","s536","chigomatsu","shibushi_hs","s537","shibushi_eki_ue","s538","shibushi_eki_mae","s539","shibushi","s540","s541","shibushi_port_ent","s542","s543","s544","s545","s546","shibushi_port"] },
-                    { start: "koyama", end: "shimobaru", removeIds: ["u201","u202","u203","u204","u205","u206","u207","u208","u209","u210","u211","u212","u213","u214","u215","u216","u217","u218","u219","u220","u221","u222","u223","u224","u225","u226","u227","u228","u229","u230","u231","u232","u233","ariakebashi","u300","u301","u302","u303","u304","u305","u306","u307","u308","u309","u310","kaizo","u400","u401","u402","u403","u404","u405","u406","u407","u408","uchinoura"] }
-                  ]
-                };
-
-                const currentRules = allSkipRules[routeId] || [];
-                currentRules.forEach(rule => {
-                  if ((sch[i].stop_id === rule.start && sch[i+1].stop_id === rule.end) || 
-                      (sch[i].stop_id === rule.end && sch[i+1].stop_id === rule.start)) {
-                    segmentPath = segmentPath.filter(p => !rule.removeIds.includes(p.id));
-                  }
-                });
+                segmentPath = idxA < idxB ? data.allPathCoords.slice(idxA, idxB + 1) : data.allPathCoords.slice(idxB, idxA + 1).reverse();
               } else {
                 segmentPath = [data.stops[sch[i].stop_id], data.stops[sch[i+1].stop_id]];
               }
@@ -518,7 +417,7 @@
               const pathLatLng = segmentPath.map(p => new google.maps.LatLng(p.lat, p.lng));
               const currentData = getPosAndHeadingAlongPath(pathLatLng, fraction);
               trip.marker.setPosition(currentData.pos);
-              trip.marker.setIcon(getRotatedIconConfig(currentData.heading, trip.tripId));
+              trip.marker.setIcon(getRotatedIconConfig(currentData.heading, route.color));
               break;
             }
           }
@@ -526,7 +425,6 @@
       }
     }
   </script>
-  
   <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBqcUNb7-_olnNZKHR_UyfqB5Zi2KOI5X8&libraries=geometry&callback=initMap"></script>
 </body>
 </html>
