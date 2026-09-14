@@ -1,0 +1,12 @@
+stop_id,lat,lng,next_segment
+kanoya,31.388796,130.850184,kanoya_to_shiyakusho
+shiyakusho,31.377970,130.853541,shiyakusho_to_hirabaru
+hirabaru,31.363713,130.859007,hirabaru_to_kawanishi
+kawanishi,31.359627,130.875485,kawanishi_to_myoshu
+myoshu,31.344205,130.898547,myoshu_to_aira
+aira,31.327727,130.898840,aira_to_sakashita
+sakashita,31.347023,130.941827,sakashita_to_koyama
+koyama,31.347014,130.945492,koyama_to_ariakebashi
+ariakebashi,31.356041,131.008723,ariakebashi_to_kaizo
+kaizo,31.326885,131.099576,kaizo_to_uchinoura
+uchinoura,31.275305,131.078029,
